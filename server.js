@@ -1,0 +1,133 @@
+const path = require("path");
+const express = require("express");
+const dotenv = require("dotenv");
+const cors = require("cors");
+
+dotenv.config();
+
+const connectDB = require("./config/db");
+const seedDefaultTemplates = require("./utils/defaultTemplates");
+const { getAppSettings } = require("./utils/settingsService");
+
+const authRoutes = require("./routes/authRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
+const templateRoutes = require("./routes/templateRoutes");
+const cardRoutes = require("./routes/cardRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
+const fileRoutes = require("./routes/fileRoutes");
+const googleFormRoutes = require("./routes/googleFormRoutes");
+
+const { protect } = require("./middleware/authMiddleware");
+const { notFound, errorHandler } = require("./middleware/errorMiddleware");
+
+const app = express();
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5175",
+  "https://syedishaq.me",
+  process.env.CLIENT_URL,
+  process.env.FRONTEND_URL,
+  ...(process.env.CLIENT_URLS ? process.env.CLIENT_URLS.split(",") : [])
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(null, false);
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
+  })
+);
+
+app.options("*", cors());
+
+app.use(express.json({ limit: process.env.REQUEST_BODY_LIMIT || "25mb" }));
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: process.env.REQUEST_BODY_LIMIT || "25mb"
+  })
+);
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+app.get("/", (req, res) => {
+  res.json({ message: "ID Card Generator API is running" });
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+let serverReadyPromise = null;
+
+const prepareServer = async () => {
+  if (!serverReadyPromise) {
+    serverReadyPromise = (async () => {
+      await connectDB();
+      await seedDefaultTemplates();
+      await getAppSettings();
+    })().catch(error => {
+      serverReadyPromise = null;
+      throw error;
+    });
+  }
+
+  return serverReadyPromise;
+};
+
+const ensureServerReady = async (req, res, next) => {
+  try {
+    await prepareServer();
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
+/*
+  Public:
+  - auth/login must be public.
+  - files must be public because <img src=""> cannot send Authorization header.
+  - google-form route stays public from login, but protected using x-webhook-secret.
+*/
+app.use("/api/auth", authRoutes);
+app.use("/api/files", fileRoutes);
+
+app.use("/api", ensureServerReady);
+app.use("/api/google-form", googleFormRoutes);
+
+/*
+  Protected admin routes.
+*/
+app.use("/api/settings", protect, settingsRoutes);
+app.use("/api/uploads", protect, uploadRoutes);
+app.use("/api/upload", protect, uploadRoutes);
+app.use("/api/templates", protect, templateRoutes);
+app.use("/api/cards", protect, cardRoutes);
+
+app.use(notFound);
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 5000;
+
+if (!process.env.VERCEL) {
+  prepareServer()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch(error => {
+      console.error("Server startup failed:", error.message);
+      process.exit(1);
+    });
+}
+
+module.exports = app;

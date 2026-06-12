@@ -1,0 +1,25 @@
+node_modules
+dist
+.env
+uploads/*
+!uploads/.gitkeep
+**/node_modules/
+
+# dependencies
+node_modules/
+**/node_modules/
+
+# environment files
+.env
+.env.*
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!.env.example
+!backend/.env.example
+!frontend/.env.example
+
+# build files
+dist/
+build/
