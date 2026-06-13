@@ -1,4 +1,4 @@
-const { verifyAuthToken } = require("../config/staticAuth");
+const { verifyAuthToken } = require("../utils/authTokenService");
 
 const protect = (req, res, next) => {
   const authHeader = req.headers.authorization || "";

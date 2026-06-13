@@ -1,8 +1,9 @@
 const express = require("express");
+const multer = require("multer");
 const upload = require("../middleware/uploadMiddleware");
 const { uploadBufferToDrive } = require("../utils/googleDriveStorage");
 const { removeBackgroundFromUpload } = require("../utils/backgroundRemoval");
-const { getAppSettings } = require("../utils/settingsService");
+const { getAppConfig } = require("../utils/appConfig");
 
 const router = express.Router();
 
@@ -10,8 +11,30 @@ const shouldRemoveBackground = (value) => {
   return [true, "true", "1", "yes", "on"].includes(value);
 };
 
+const handleUploadMiddleware = fieldName => {
+  return (req, res, next) => {
+    upload.single(fieldName)(req, res, error => {
+      if (!error) {
+        return next();
+      }
+
+      if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+        return res.status(413).json({
+          success: false,
+          message: "Image file is too large"
+        });
+      }
+
+      return res.status(error.statusCode || 400).json({
+        success: false,
+        message: error.message || "Invalid image upload"
+      });
+    });
+  };
+};
+
 const createUploadHandler = (fieldName) => [
-  upload.single(fieldName),
+  handleUploadMiddleware(fieldName),
   async (req, res) => {
     try {
       if (!req.file) {
@@ -21,12 +44,12 @@ const createUploadHandler = (fieldName) => [
         });
       }
 
-      const settings = await getAppSettings();
+      const appConfig = getAppConfig();
       const requestedRemoveBg = shouldRemoveBackground(
         req.body?.removeBackground,
       );
       const removeBg =
-        requestedRemoveBg && settings.backgroundRemovalEnabled !== false;
+        requestedRemoveBg && appConfig.backgroundRemovalEnabled !== false;
 
       let fileToUpload = req.file;
 
@@ -34,8 +57,8 @@ const createUploadHandler = (fieldName) => [
         try {
           fileToUpload = await removeBackgroundFromUpload(req.file, {
             fileName: req.body?.fileName || req.file.originalname,
-            model: settings.bgRemovalModel,
-            maxDimension: settings.bgRemovalMaxDimension,
+            model: appConfig.bgRemovalModel,
+            maxDimension: appConfig.bgRemovalMaxDimension,
           });
         } catch (bgError) {
           console.error("BACKGROUND REMOVAL FAILED:", bgError);

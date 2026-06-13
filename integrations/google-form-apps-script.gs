@@ -1,6 +1,3 @@
-const BACKEND_URL_FALLBACK =
-  "https://id-generator-backend-jet.vercel.app/api/google-form/digival-card";
-
 // Update these values so they exactly match your Google Form question titles
 // or the linked response sheet column headers.
 const FIELD_TITLES = {
@@ -22,8 +19,12 @@ function onFormSubmit(e) {
     throw new Error("Set WEBHOOK_SECRET in Apps Script project settings.");
   }
 
-  const photoFile = getUploadedFile_(e, FIELD_TITLES.photo);
-  const photoBlob = photoFile.getBlob();
+  const url = getScriptSetting_("BACKEND_URL");
+  if (!url) {
+    throw new Error("Set BACKEND_URL in Apps Script project settings.");
+  }
+
+  const photoFileId = getUploadedFileId_(e, FIELD_TITLES.photo);
 
   const payload = {
     name: getAnswer_(e, FIELD_TITLES.name),
@@ -31,12 +32,10 @@ function onFormSubmit(e) {
     bloodGroup: getAnswer_(e, FIELD_TITLES.bloodGroup),
     phone: getAnswer_(e, FIELD_TITLES.phone),
     email: getAnswer_(e, FIELD_TITLES.email),
-    photoBase64: Utilities.base64Encode(photoBlob.getBytes()),
-    photoMimeType: photoBlob.getContentType(),
+    photoFileId: photoFileId,
     submissionId: getSubmissionId_(e)
   };
 
-  const url = getScriptSetting_("BACKEND_URL", BACKEND_URL_FALLBACK);
   const response = UrlFetchApp.fetch(url, {
     method: "post",
     contentType: "application/json",
@@ -57,11 +56,10 @@ function onFormSubmit(e) {
   return body;
 }
 
-function getScriptSetting_(key, fallback) {
-  return (
-    PropertiesService.getScriptProperties().getProperty(key) ||
-    fallback
-  );
+function getScriptSetting_(key) {
+  return String(
+    PropertiesService.getScriptProperties().getProperty(key) || ""
+  ).trim();
 }
 
 function getAnswer_(e, title) {
@@ -101,7 +99,7 @@ function getAnswerFromFormResponse_(e, title) {
   return "";
 }
 
-function getUploadedFile_(e, title) {
+function getUploadedFileId_(e, title) {
   const answer = getAnswer_(e, title);
   const fileId = extractDriveFileId_(answer);
 
@@ -111,7 +109,7 @@ function getUploadedFile_(e, title) {
     );
   }
 
-  return DriveApp.getFileById(fileId);
+  return fileId;
 }
 
 function extractDriveFileId_(value) {

@@ -7,10 +7,10 @@ dotenv.config();
 
 const connectDB = require("./config/db");
 const seedDefaultTemplates = require("./utils/defaultTemplates");
-const { getAppSettings } = require("./utils/settingsService");
+const { getAppConfig } = require("./utils/appConfig");
+const { assertAuthSecretConfigured } = require("./utils/authTokenService");
 
 const authRoutes = require("./routes/authRoutes");
-const settingsRoutes = require("./routes/settingsRoutes");
 const templateRoutes = require("./routes/templateRoutes");
 const cardRoutes = require("./routes/cardRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
@@ -21,20 +21,14 @@ const { protect } = require("./middleware/authMiddleware");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
+const appConfig = getAppConfig();
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:5175",
-  "https://syedishaq.me",
-  process.env.CLIENT_URL,
-  process.env.FRONTEND_URL,
-  ...(process.env.CLIENT_URLS ? process.env.CLIENT_URLS.split(",") : [])
-].filter(Boolean);
+assertAuthSecretConfigured();
 
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
+      if (!origin || appConfig.allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
@@ -47,11 +41,11 @@ app.use(
 
 app.options("*", cors());
 
-app.use(express.json({ limit: process.env.REQUEST_BODY_LIMIT || "25mb" }));
+app.use(express.json({ limit: appConfig.requestBodyLimit }));
 app.use(
   express.urlencoded({
     extended: true,
-    limit: process.env.REQUEST_BODY_LIMIT || "25mb"
+    limit: appConfig.requestBodyLimit
   })
 );
 
@@ -72,7 +66,6 @@ const prepareServer = async () => {
     serverReadyPromise = (async () => {
       await connectDB();
       await seedDefaultTemplates();
-      await getAppSettings();
     })().catch(error => {
       serverReadyPromise = null;
       throw error;
@@ -93,20 +86,18 @@ const ensureServerReady = async (req, res, next) => {
 
 /*
   Public:
-  - auth/login must be public.
+  - auth/login and auth/setup must be public.
   - files must be public because <img src=""> cannot send Authorization header.
   - google-form route stays public from login, but protected using x-webhook-secret.
 */
+app.use("/api", ensureServerReady);
 app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
-
-app.use("/api", ensureServerReady);
 app.use("/api/google-form", googleFormRoutes);
 
 /*
   Protected admin routes.
 */
-app.use("/api/settings", protect, settingsRoutes);
 app.use("/api/uploads", protect, uploadRoutes);
 app.use("/api/upload", protect, uploadRoutes);
 app.use("/api/templates", protect, templateRoutes);

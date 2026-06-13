@@ -17,15 +17,6 @@ const generatedCardSchema = new mongoose.Schema(
     logo: { type: String, default: "" },
     qrData: { type: String, default: "" },
 
-    recipientEmail: { type: String, default: "" },
-    emailStatus: {
-      type: String,
-      enum: ["not-required", "pending", "sent", "failed"],
-      default: "not-required",
-    },
-    emailSentAt: { type: Date },
-    emailError: { type: String, default: "" },
-
     source: {
       type: String,
       enum: ["manual", "google-form"],

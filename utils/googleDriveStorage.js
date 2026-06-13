@@ -1,7 +1,7 @@
 const { Readable } = require("stream");
 const path = require("path");
 const getGoogleDrive = require("../config/googleDrive");
-const { getAppSettings } = require("./settingsService");
+const { getAppConfig } = require("./appConfig");
 
 const sanitizeFileName = fileName => {
   const parsedName = path.basename(String(fileName || "upload"));
@@ -22,9 +22,9 @@ const getDriveFolderId = async options => {
     return options.folderId;
   }
 
-  const settings = await getAppSettings();
+  const appConfig = getAppConfig();
 
-  return settings.googleDriveFolderId || process.env.GOOGLE_DRIVE_FOLDER_ID;
+  return appConfig.googleDriveFolderId;
 };
 
 const normalizeUploadFileName = (file, options = {}) => {
@@ -124,7 +124,7 @@ const uploadBufferToDrive = async (file, options = {}) => {
 
   if (!folderId) {
     throw new Error(
-      "Google Drive folder ID is missing. Add it in Settings or GOOGLE_DRIVE_FOLDER_ID env."
+      "Google Drive folder ID is missing. Add GOOGLE_DRIVE_FOLDER_ID in env."
     );
   }
 
@@ -176,7 +176,7 @@ const streamToBuffer = async stream => {
   return Buffer.concat(chunks);
 };
 
-const downloadDriveFileAsBuffer = async fileId => {
+const getDriveFileMetadata = async fileId => {
   const drive = getGoogleDrive();
 
   const metadataResponse = await drive.files.get({
@@ -184,6 +184,13 @@ const downloadDriveFileAsBuffer = async fileId => {
     fields: "id,name,mimeType,size",
     supportsAllDrives: true
   });
+
+  return metadataResponse.data;
+};
+
+const downloadDriveFileAsBuffer = async (fileId, existingMetadata = null) => {
+  const drive = getGoogleDrive();
+  const metadata = existingMetadata || (await getDriveFileMetadata(fileId));
 
   const mediaResponse = await drive.files.get(
     {
@@ -200,13 +207,14 @@ const downloadDriveFileAsBuffer = async fileId => {
 
   return {
     buffer,
-    metadata: metadataResponse.data
+    metadata
   };
 };
 
 module.exports = {
   uploadBufferToDrive,
   downloadDriveFileAsBuffer,
+  getDriveFileMetadata,
   findDriveFileByName,
   sanitizeFileName
 };

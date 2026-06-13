@@ -1,9 +1,49 @@
+const { createAuthToken } = require("../utils/authTokenService");
 const {
-  createAuthToken,
-  validateStaticLogin
-} = require("../config/staticAuth");
+  createInitialAdminCredentials,
+  getAdminSetupStatus,
+  validateAdminLogin
+} = require("../utils/staticAuthService");
 
-const login = (req, res) => {
+const getSetupStatus = async (req, res, next) => {
+  try {
+    const setupStatus = await getAdminSetupStatus();
+
+    return res.json({
+      success: true,
+      ...setupStatus
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const setupAdmin = async (req, res, next) => {
+  try {
+    const username = String(req.body?.username || "").trim();
+    const password = String(req.body?.password || "");
+
+    const account = await createInitialAdminCredentials({
+      username,
+      password
+    });
+    const token = createAuthToken(account.username);
+
+    return res.status(201).json({
+      success: true,
+      message: "Admin account created successfully",
+      token,
+      user: {
+        username: account.username,
+        role: account.role
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const login = async (req, res, next) => {
   const username = String(req.body?.username || "").trim();
   const password = String(req.body?.password || "");
 
@@ -14,26 +54,38 @@ const login = (req, res) => {
     });
   }
 
-  const isValid = validateStaticLogin({ username, password });
+  try {
+    const loginResult = await validateAdminLogin({ username, password });
 
-  if (!isValid) {
-    return res.status(401).json({
-      success: false,
-      message: "Invalid username or password"
-    });
-  }
-
-  const token = createAuthToken(username);
-
-  return res.json({
-    success: true,
-    message: "Login successful",
-    token,
-    user: {
-      username,
-      role: "admin"
+    if (loginResult.setupRequired) {
+      return res.status(409).json({
+        success: false,
+        setupRequired: true,
+        message: "Admin account is not configured yet"
+      });
     }
-  });
+
+    if (!loginResult.isValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid username or password"
+      });
+    }
+
+    const token = createAuthToken(loginResult.username);
+
+    return res.json({
+      success: true,
+      message: "Login successful",
+      token,
+      user: {
+        username: loginResult.username,
+        role: "admin"
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 const getProfile = (req, res) => {
@@ -47,6 +99,8 @@ const getProfile = (req, res) => {
 };
 
 module.exports = {
+  getSetupStatus,
+  setupAdmin,
   login,
   getProfile
 };

@@ -1,90 +1,44 @@
 const GeneratedCard = require("../models/GeneratedCard");
 const Template = require("../models/Template");
-const { uploadBufferToDrive } = require("../utils/googleDriveStorage");
 
 const isDataImage = value => {
   return typeof value === "string" && /^data:image\//i.test(value);
 };
 
-const dataImageToUploadFile = (value, name = "image") => {
-  const match = String(value).match(/^data:(image\/[\w.+-]+);base64,(.+)$/is);
-
-  if (!match) {
-    const error = new Error("Invalid inline image data");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const mimeType = match[1];
-  const cleanBase64 = match[2].replace(/\s/g, "");
-  const buffer = Buffer.from(cleanBase64, "base64");
-
-  if (!buffer.length) {
-    const error = new Error("Inline image data is empty");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const extension =
-    {
-      "image/jpeg": "jpg",
-      "image/jpg": "jpg",
-      "image/png": "png",
-      "image/webp": "webp",
-      "image/gif": "gif"
-    }[mimeType.toLowerCase()] || "png";
-
-  return {
-    fieldname: name,
-    originalname: `${name}.${extension}`,
-    mimetype: mimeType,
-    size: buffer.length,
-    buffer
-  };
-};
-
-const persistInlineImagesToDrive = async (value, name = "image") => {
+const rejectInlineImages = (value, name = "image") => {
   if (isDataImage(value)) {
-    const uploadedFile = await uploadBufferToDrive(dataImageToUploadFile(value, name));
-    return uploadedFile.imageUrl;
+    const error = new Error(
+      `Inline image data is no longer supported for "${name}". Upload images through /api/uploads/photo first and save the returned imageUrl.`
+    );
+    error.statusCode = 400;
+    throw error;
   }
 
   if (Array.isArray(value)) {
-    return Promise.all(
-      value.map((item, index) => persistInlineImagesToDrive(item, `${name}-${index}`))
-    );
+    value.forEach((item, index) => rejectInlineImages(item, `${name}-${index}`));
+    return;
   }
 
   if (value && typeof value === "object") {
-    const entries = await Promise.all(
-      Object.entries(value).map(async ([key, entryValue]) => [
-        key,
-        await persistInlineImagesToDrive(entryValue, key)
-      ])
-    );
-
-    return Object.fromEntries(entries);
+    Object.entries(value).forEach(([key, entryValue]) => {
+      rejectInlineImages(entryValue, key);
+    });
   }
-
-  return value;
 };
 
-const prepareGeneratedCardPayload = async payload => {
+const prepareGeneratedCardPayload = payload => {
   const preparedPayload = { ...payload };
 
   if (Object.prototype.hasOwnProperty.call(preparedPayload, "formData")) {
-    preparedPayload.formData = await persistInlineImagesToDrive(
-      preparedPayload.formData,
-      "formData"
-    );
+    rejectInlineImages(preparedPayload.formData, "formData");
   }
 
   if (Object.prototype.hasOwnProperty.call(preparedPayload, "photo")) {
-    preparedPayload.photo = await persistInlineImagesToDrive(preparedPayload.photo, "photo");
+    rejectInlineImages(preparedPayload.photo, "photo");
   }
 
   if (Object.prototype.hasOwnProperty.call(preparedPayload, "logo")) {
-    preparedPayload.logo = await persistInlineImagesToDrive(preparedPayload.logo, "logo");
+    rejectInlineImages(preparedPayload.logo, "logo");
   }
 
   preparedPayload.uploadsPersisted = true;
@@ -94,7 +48,13 @@ const prepareGeneratedCardPayload = async payload => {
 
 exports.createGeneratedCard = async (req, res, next) => {
   try {
-    const { templateId, formData = {}, photo = "", logo = "", qrData = "" } = req.body;
+    const {
+      templateId,
+      formData = {},
+      photo = "",
+      logo = "",
+      qrData = ""
+    } = req.body;
 
     if (!templateId) {
       res.status(400);
@@ -128,8 +88,9 @@ exports.createGeneratedCard = async (req, res, next) => {
 exports.getGeneratedCards = async (req, res, next) => {
   try {
     const cards = await GeneratedCard.find()
-  .populate("templateId", "templateName category orientation layoutKey slug")
-  .sort({ createdAt: -1 });
+      .populate("templateId", "templateName category orientation layoutKey slug")
+      .sort({ createdAt: -1 });
+
     res.json(cards);
   } catch (error) {
     next(error);
@@ -154,10 +115,14 @@ exports.getGeneratedCardById = async (req, res, next) => {
 exports.updateGeneratedCard = async (req, res, next) => {
   try {
     const preparedPayload = await prepareGeneratedCardPayload(req.body);
-    const updatedCard = await GeneratedCard.findByIdAndUpdate(req.params.id, preparedPayload, {
-      new: true,
-      runValidators: true
-    });
+    const updatedCard = await GeneratedCard.findByIdAndUpdate(
+      req.params.id,
+      preparedPayload,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
 
     if (!updatedCard) {
       res.status(404);
