@@ -10,6 +10,10 @@ const {
 const router = express.Router();
 
 router.route("/").post(createTemplate).get(getTemplates);
-router.route("/:id").get(getTemplateById).put(updateTemplate).delete(deleteTemplate);
+router
+  .route("/:id")
+  .get(getTemplateById)
+  .put(updateTemplate)
+  .delete(deleteTemplate);
 
 module.exports = router;

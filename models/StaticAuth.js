@@ -15,15 +15,10 @@ const staticAuthSchema = new mongoose.Schema(
       trim: true
     },
 
-    passwordHash: {
+    password: {
       type: String,
       required: true,
       select: false
-    },
-
-    setupAt: {
-      type: Date,
-      default: Date.now
     },
 
     passwordUpdatedAt: {

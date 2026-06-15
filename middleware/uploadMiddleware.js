@@ -1,8 +1,7 @@
 const multer = require("multer");
-const { getAppConfig } = require("../utils/appConfig");
+const { getRuntimeAppConfig } = require("../utils/appConfig");
 
 const storage = multer.memoryStorage();
-const appConfig = getAppConfig();
 
 const fileFilter = (req, file, cb) => {
   const allowedTypes = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
@@ -16,12 +15,23 @@ const fileFilter = (req, file, cb) => {
   cb(null, true);
 };
 
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: {
-    fileSize: appConfig.uploadFileSizeLimitBytes
-  }
-});
+const createUploadMiddleware = fieldName => {
+  return async (req, res, next) => {
+    try {
+      const appConfig = await getRuntimeAppConfig();
+      const upload = multer({
+        storage,
+        fileFilter,
+        limits: {
+          fileSize: appConfig.uploadFileSizeLimitBytes
+        }
+      });
 
-module.exports = upload;
+      upload.single(fieldName)(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  };
+};
+
+module.exports = createUploadMiddleware;

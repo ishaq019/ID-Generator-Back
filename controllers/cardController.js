@@ -68,7 +68,7 @@ exports.createGeneratedCard = async (req, res, next) => {
       throw new Error("Template not found");
     }
 
-    const preparedPayload = await prepareGeneratedCardPayload({
+    const preparedPayload = prepareGeneratedCardPayload({
       templateId,
       formData,
       photo,
@@ -114,7 +114,7 @@ exports.getGeneratedCardById = async (req, res, next) => {
 
 exports.updateGeneratedCard = async (req, res, next) => {
   try {
-    const preparedPayload = await prepareGeneratedCardPayload(req.body);
+    const preparedPayload = prepareGeneratedCardPayload(req.body);
     const updatedCard = await GeneratedCard.findByIdAndUpdate(
       req.params.id,
       preparedPayload,

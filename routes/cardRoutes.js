@@ -10,6 +10,10 @@ const {
 const router = express.Router();
 
 router.route("/").post(createGeneratedCard).get(getGeneratedCards);
-router.route("/:id").get(getGeneratedCardById).put(updateGeneratedCard).delete(deleteGeneratedCard);
+router
+  .route("/:id")
+  .get(getGeneratedCardById)
+  .put(updateGeneratedCard)
+  .delete(deleteGeneratedCard);
 
 module.exports = router;

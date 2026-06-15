@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { getRuntimeAppConfig } = require("./appConfig");
 
 const TOKEN_EXPIRES_IN_HOURS = 24;
 let developmentAuthSecret = null;
@@ -7,13 +8,15 @@ const isProductionRuntime = () => {
   return process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 };
 
-const getAuthSecret = () => {
-  if (process.env.AUTH_SECRET) {
-    return process.env.AUTH_SECRET;
+const getAuthSecret = async () => {
+  const appConfig = await getRuntimeAppConfig();
+
+  if (appConfig.authSecret) {
+    return appConfig.authSecret;
   }
 
   if (isProductionRuntime()) {
-    throw new Error("AUTH_SECRET is required in production");
+    throw new Error("AUTH_SECRET is required in MongoDB settings or env");
   }
 
   if (!developmentAuthSecret) {
@@ -26,8 +29,8 @@ const getAuthSecret = () => {
   return developmentAuthSecret;
 };
 
-const assertAuthSecretConfigured = () => {
-  getAuthSecret();
+const assertAuthSecretConfigured = async () => {
+  await getAuthSecret();
 };
 
 const toBase64Url = value => {
@@ -38,9 +41,9 @@ const fromBase64Url = value => {
   return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
 };
 
-const createSignature = payload => {
+const createSignature = async payload => {
   return crypto
-    .createHmac("sha256", getAuthSecret())
+    .createHmac("sha256", await getAuthSecret())
     .update(payload)
     .digest("base64url");
 };
@@ -56,7 +59,7 @@ const hasValidSignature = (signature, expectedSignature) => {
   return crypto.timingSafeEqual(actual, expected);
 };
 
-const createAuthToken = username => {
+const createAuthToken = async username => {
   const payload = {
     username,
     role: "admin",
@@ -64,12 +67,12 @@ const createAuthToken = username => {
   };
 
   const encodedPayload = toBase64Url(payload);
-  const signature = createSignature(encodedPayload);
+  const signature = await createSignature(encodedPayload);
 
   return `${encodedPayload}.${signature}`;
 };
 
-const verifyAuthToken = token => {
+const verifyAuthToken = async token => {
   try {
     if (!token || !token.includes(".")) {
       return null;
@@ -87,7 +90,7 @@ const verifyAuthToken = token => {
       return null;
     }
 
-    const expectedSignature = createSignature(encodedPayload);
+    const expectedSignature = await createSignature(encodedPayload);
 
     if (!hasValidSignature(signature, expectedSignature)) {
       return null;

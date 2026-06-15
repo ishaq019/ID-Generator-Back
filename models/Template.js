@@ -6,7 +6,16 @@ const fieldSchema = new mongoose.Schema(
     key: { type: String, required: true, trim: true },
     type: {
       type: String,
-      enum: ["text", "number", "date", "email", "phone", "textarea", "image", "qr"],
+      enum: [
+        "text",
+        "number",
+        "date",
+        "email",
+        "phone",
+        "textarea",
+        "image",
+        "qr"
+      ],
       default: "text"
     },
     side: { type: String, enum: ["front", "back"], default: "front" },
@@ -39,9 +48,16 @@ const fieldSchema = new mongoose.Schema(
 
 const designSchema = new mongoose.Schema(
   {
-    backgroundType: { type: String, enum: ["solid", "gradient"], default: "solid" },
+    backgroundType: {
+      type: String,
+      enum: ["solid", "gradient"],
+      default: "solid"
+    },
     backgroundColor: { type: String, default: "#ffffff" },
-    gradient: { type: String, default: "linear-gradient(135deg, #ffffff, #eef2ff)" },
+    gradient: {
+      type: String,
+      default: "linear-gradient(135deg, #ffffff, #eef2ff)"
+    },
     borderRadius: { type: Number, default: 18 },
     shadow: { type: Boolean, default: true },
     borderColor: { type: String, default: "#e5e7eb" }
@@ -52,15 +68,13 @@ const designSchema = new mongoose.Schema(
 const templateSchema = new mongoose.Schema(
   {
     templateName: { type: String, required: true, trim: true },
-   slug: { type: String, unique: true, sparse: true },
-
-layoutKey: {
-  type: String,
-  enum: ["generic", "digival"],
-  default: "generic"
-},
-
-category: {
+    slug: { type: String, unique: true, sparse: true },
+    layoutKey: {
+      type: String,
+      enum: ["generic", "digival"],
+      default: "generic"
+    },
+    category: {
       type: String,
       enum: ["Office", "University", "Custom"],
       default: "Custom"

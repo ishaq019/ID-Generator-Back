@@ -1,9 +1,9 @@
 const express = require("express");
 const multer = require("multer");
-const upload = require("../middleware/uploadMiddleware");
+const createUploadMiddleware = require("../middleware/uploadMiddleware");
 const { uploadBufferToDrive } = require("../utils/googleDriveStorage");
 const { removeBackgroundFromUpload } = require("../utils/backgroundRemoval");
-const { getAppConfig } = require("../utils/appConfig");
+const { getRuntimeAppConfig } = require("../utils/appConfig");
 
 const router = express.Router();
 
@@ -12,8 +12,10 @@ const shouldRemoveBackground = (value) => {
 };
 
 const handleUploadMiddleware = fieldName => {
+  const uploadSingle = createUploadMiddleware(fieldName);
+
   return (req, res, next) => {
-    upload.single(fieldName)(req, res, error => {
+    uploadSingle(req, res, error => {
       if (!error) {
         return next();
       }
@@ -44,7 +46,7 @@ const createUploadHandler = (fieldName) => [
         });
       }
 
-      const appConfig = getAppConfig();
+      const appConfig = await getRuntimeAppConfig();
       const requestedRemoveBg = shouldRemoveBackground(
         req.body?.removeBackground,
       );

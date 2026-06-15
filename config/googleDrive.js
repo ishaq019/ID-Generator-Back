@@ -1,50 +1,57 @@
 const { google } = require("googleapis");
+const { getRuntimeAppConfig } = require("../utils/appConfig");
 
 let driveClient = null;
+let driveClientKey = "";
 
-const hasOAuthCredentials = () => {
+const getDriveClientKey = appConfig => {
+  return [
+    appConfig.googleDriveClientId,
+    appConfig.googleDriveClientSecret,
+    appConfig.googleDriveRedirectUri,
+    appConfig.googleDriveRefreshToken,
+    appConfig.googleClientEmail,
+    appConfig.googlePrivateKey,
+    appConfig.googleServiceAccountJson
+  ].join("|");
+};
+
+const hasOAuthCredentials = appConfig => {
   return Boolean(
-    process.env.GOOGLE_DRIVE_CLIENT_ID &&
-      process.env.GOOGLE_DRIVE_CLIENT_SECRET &&
-      process.env.GOOGLE_DRIVE_REFRESH_TOKEN
+    appConfig.googleDriveClientId &&
+      appConfig.googleDriveClientSecret &&
+      appConfig.googleDriveRefreshToken
   );
 };
 
-const getOAuthClient = () => {
-  const {
-    GOOGLE_DRIVE_CLIENT_ID,
-    GOOGLE_DRIVE_CLIENT_SECRET,
-    GOOGLE_DRIVE_REDIRECT_URI,
-    GOOGLE_DRIVE_REFRESH_TOKEN
-  } = process.env;
-
+const getOAuthClient = appConfig => {
   if (
-    !GOOGLE_DRIVE_CLIENT_ID ||
-    !GOOGLE_DRIVE_CLIENT_SECRET ||
-    !GOOGLE_DRIVE_REFRESH_TOKEN
+    !appConfig.googleDriveClientId ||
+    !appConfig.googleDriveClientSecret ||
+    !appConfig.googleDriveRefreshToken
   ) {
     throw new Error(
-      "Google Drive OAuth credentials are missing. Set GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET, and GOOGLE_DRIVE_REFRESH_TOKEN."
+      "Google Drive OAuth credentials are missing. Set them in MongoDB settings or env."
     );
   }
 
   const auth = new google.auth.OAuth2(
-    GOOGLE_DRIVE_CLIENT_ID,
-    GOOGLE_DRIVE_CLIENT_SECRET,
-    GOOGLE_DRIVE_REDIRECT_URI || "https://developers.google.com/oauthplayground"
+    appConfig.googleDriveClientId,
+    appConfig.googleDriveClientSecret,
+    appConfig.googleDriveRedirectUri
   );
 
   auth.setCredentials({
-    refresh_token: GOOGLE_DRIVE_REFRESH_TOKEN
+    refresh_token: appConfig.googleDriveRefreshToken
   });
 
   return auth;
 };
 
-const getServiceAccountCredentials = () => {
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+const getServiceAccountCredentials = appConfig => {
+  if (appConfig.googleServiceAccountJson) {
     try {
-      const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+      const credentials = JSON.parse(appConfig.googleServiceAccountJson);
 
       return {
         clientEmail: credentials.client_email,
@@ -56,17 +63,17 @@ const getServiceAccountCredentials = () => {
   }
 
   return {
-    clientEmail: process.env.GOOGLE_CLIENT_EMAIL,
-    privateKey: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n")
+    clientEmail: appConfig.googleClientEmail,
+    privateKey: appConfig.googlePrivateKey?.replace(/\\n/g, "\n")
   };
 };
 
-const getJwtClient = () => {
-  const { clientEmail, privateKey } = getServiceAccountCredentials();
+const getJwtClient = appConfig => {
+  const { clientEmail, privateKey } = getServiceAccountCredentials(appConfig);
 
   if (!clientEmail || !privateKey) {
     throw new Error(
-      "Google Drive credentials are missing. Set OAuth credentials or GOOGLE_CLIENT_EMAIL/GOOGLE_PRIVATE_KEY."
+      "Google Drive credentials are missing. Set OAuth credentials or service account credentials in MongoDB settings or env."
     );
   }
 
@@ -77,17 +84,23 @@ const getJwtClient = () => {
   });
 };
 
-const getGoogleDrive = () => {
-  if (driveClient) {
+const getGoogleDrive = async () => {
+  const appConfig = await getRuntimeAppConfig();
+  const nextClientKey = getDriveClientKey(appConfig);
+
+  if (driveClient && driveClientKey === nextClientKey) {
     return driveClient;
   }
 
-  const auth = hasOAuthCredentials() ? getOAuthClient() : getJwtClient();
+  const auth = hasOAuthCredentials(appConfig)
+    ? getOAuthClient(appConfig)
+    : getJwtClient(appConfig);
 
   driveClient = google.drive({
     version: "v3",
     auth
   });
+  driveClientKey = nextClientKey;
 
   return driveClient;
 };

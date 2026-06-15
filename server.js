@@ -23,48 +23,13 @@ const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const app = express();
 const appConfig = getAppConfig();
 
-assertAuthSecretConfigured();
-
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (!origin || appConfig.allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      return callback(null, false);
-    },
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
-  })
-);
-
-app.options("*", cors());
-
-app.use(express.json({ limit: appConfig.requestBodyLimit }));
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: appConfig.requestBodyLimit
-  })
-);
-
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-app.get("/", (req, res) => {
-  res.json({ message: "ID Card Generator API is running" });
-});
-
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
 let serverReadyPromise = null;
 
 const prepareServer = async () => {
   if (!serverReadyPromise) {
     serverReadyPromise = (async () => {
       await connectDB();
+      await assertAuthSecretConfigured();
       await seedDefaultTemplates();
     })().catch(error => {
       serverReadyPromise = null;
@@ -84,13 +49,47 @@ const ensureServerReady = async (req, res, next) => {
   }
 };
 
+const corsOptions = {
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
+
+app.use(express.json({ limit: appConfig.requestBodyLimit }));
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: appConfig.requestBodyLimit
+  })
+);
+
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+app.get("/", (req, res) => {
+  res.json({ message: "ID Card Generator API is running" });
+});
+
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api")) {
+    return next();
+  }
+
+  return ensureServerReady(req, res, next);
+});
+
 /*
   Public:
-  - auth/login and auth/setup must be public.
+  - auth/login must be public.
   - files must be public because <img src=""> cannot send Authorization header.
   - google-form route stays public from login, but protected using x-webhook-secret.
 */
-app.use("/api", ensureServerReady);
 app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/google-form", googleFormRoutes);

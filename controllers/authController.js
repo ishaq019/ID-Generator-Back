@@ -1,47 +1,5 @@
 const { createAuthToken } = require("../utils/authTokenService");
-const {
-  createInitialAdminCredentials,
-  getAdminSetupStatus,
-  validateAdminLogin
-} = require("../utils/staticAuthService");
-
-const getSetupStatus = async (req, res, next) => {
-  try {
-    const setupStatus = await getAdminSetupStatus();
-
-    return res.json({
-      success: true,
-      ...setupStatus
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-const setupAdmin = async (req, res, next) => {
-  try {
-    const username = String(req.body?.username || "").trim();
-    const password = String(req.body?.password || "");
-
-    const account = await createInitialAdminCredentials({
-      username,
-      password
-    });
-    const token = createAuthToken(account.username);
-
-    return res.status(201).json({
-      success: true,
-      message: "Admin account created successfully",
-      token,
-      user: {
-        username: account.username,
-        role: account.role
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+const { validateAdminLogin } = require("../utils/staticAuthService");
 
 const login = async (req, res, next) => {
   const username = String(req.body?.username || "").trim();
@@ -57,11 +15,11 @@ const login = async (req, res, next) => {
   try {
     const loginResult = await validateAdminLogin({ username, password });
 
-    if (loginResult.setupRequired) {
-      return res.status(409).json({
+    if (!loginResult.isConfigured) {
+      return res.status(503).json({
         success: false,
-        setupRequired: true,
-        message: "Admin account is not configured yet"
+        message:
+          'Admin account is not configured. Add the "admin-signin" document in MongoDB static_auth collection.'
       });
     }
 
@@ -72,7 +30,7 @@ const login = async (req, res, next) => {
       });
     }
 
-    const token = createAuthToken(loginResult.username);
+    const token = await createAuthToken(loginResult.username);
 
     return res.json({
       success: true,
@@ -99,8 +57,6 @@ const getProfile = (req, res) => {
 };
 
 module.exports = {
-  getSetupStatus,
-  setupAdmin,
   login,
   getProfile
 };

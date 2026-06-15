@@ -4,7 +4,8 @@ const notFound = (req, res, next) => {
 };
 
 const errorHandler = (err, req, res, next) => {
-  const statusCode = err.statusCode || (res.statusCode === 200 ? 500 : res.statusCode);
+  const statusCode =
+    err.statusCode || err.status || (res.statusCode === 200 ? 500 : res.statusCode);
 
   if (err.name === "CastError") {
     return res.status(400).json({ message: "Invalid ID format" });
@@ -12,6 +13,10 @@ const errorHandler = (err, req, res, next) => {
 
   if (err.code === 11000) {
     return res.status(400).json({ message: "Duplicate value already exists" });
+  }
+
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({ message: "Request body is too large" });
   }
 
   res.status(statusCode).json({

@@ -1,12 +1,8 @@
 const Template = require("../models/Template");
 const GeneratedCard = require("../models/GeneratedCard");
-const {
-  downloadDriveFileAsBuffer,
-  getDriveFileMetadata,
-  uploadBufferToDrive
-} = require("../utils/googleDriveStorage");
+const { uploadBufferToDrive } = require("../utils/googleDriveStorage");
 const { removeBackgroundFromUpload } = require("../utils/backgroundRemoval");
-const { getAppConfig } = require("../utils/appConfig");
+const { getRuntimeAppConfig } = require("../utils/appConfig");
 
 const FIELD_ALIASES = {
   name: [
@@ -41,13 +37,21 @@ const FIELD_ALIASES = {
     "Contact Number",
   ],
   email: ["email", "emailAddress", "Email", "Email Address"],
-  photoFileId: [
-    "photoFileId",
-    "photoDriveFileId",
-    "driveFileId",
-    "fileId",
-    "Photo File ID",
-    "Photo Drive File ID",
+  photoBase64: [
+    "photoBase64",
+    "photo_base64",
+    "imageBase64",
+    "image_base64",
+    "Photo Base64",
+    "Image Base64",
+  ],
+  photoMimeType: [
+    "photoMimeType",
+    "photo_mime_type",
+    "mimeType",
+    "mime_type",
+    "Photo Mime Type",
+    "Image Mime Type",
   ],
   submissionId: [
     "submissionId",
@@ -125,7 +129,8 @@ const normalizeGoogleFormPayload = (body) => {
     bloodGroup: getBodyValue(body, "bloodGroup"),
     phone: getBodyValue(body, "phone"),
     email: getBodyValue(body, "email").toLowerCase(),
-    photoFileId: getBodyValue(body, "photoFileId"),
+    photoBase64: getBodyValue(body, "photoBase64"),
+    photoMimeType: getBodyValue(body, "photoMimeType"),
     submissionId: getBodyValue(body, "submissionId"),
   };
 };
@@ -142,32 +147,40 @@ const getPhotoExtension = (mimeType) => {
   return extensions[String(mimeType || "").toLowerCase()] || "png";
 };
 
-const buildGoogleFormPhotoFile = async (payload, appConfig) => {
-  const photoFileId = String(payload.photoFileId || "").trim();
+const stripBase64Prefix = value => {
+  return String(value || "")
+    .replace(/^data:image\/[a-z0-9.+-]+;base64,/i, "")
+    .replace(/\s/g, "");
+};
 
-  if (!/^[a-zA-Z0-9_-]+$/.test(photoFileId)) {
-    const error = new Error("Google Form photoFileId is invalid");
-    error.statusCode = 400;
-    throw error;
-  }
+const buildGoogleFormPhotoFile = (payload, appConfig) => {
+  const photoMimeType = String(payload.photoMimeType || "image/png")
+    .trim()
+    .toLowerCase();
 
-  const metadata = await getDriveFileMetadata(photoFileId);
-  const photoMimeType = metadata.mimeType || "application/octet-stream";
-  const photoSize = Number(metadata.size || 0);
-
-  if (!String(photoMimeType).toLowerCase().startsWith("image/")) {
+  if (!photoMimeType.startsWith("image/")) {
     const error = new Error("Google Form photo must be an image");
     error.statusCode = 400;
     throw error;
   }
 
-  if (photoSize > appConfig.googleFormPhotoMaxBytes) {
+  const photoBase64 = stripBase64Prefix(payload.photoBase64);
+
+  if (!photoBase64 || !/^[a-zA-Z0-9+/=]+$/.test(photoBase64)) {
+    const error = new Error("Google Form photoBase64 is invalid");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const estimatedBytes = Math.floor((photoBase64.length * 3) / 4);
+
+  if (estimatedBytes > appConfig.googleFormPhotoMaxBytes) {
     const error = new Error("Google Form photo file is too large");
     error.statusCode = 413;
     throw error;
   }
 
-  const { buffer } = await downloadDriveFileAsBuffer(photoFileId, metadata);
+  const buffer = Buffer.from(photoBase64, "base64");
 
   if (!buffer.length) {
     const error = new Error("Google Form photo file is empty");
@@ -190,7 +203,7 @@ const buildGoogleFormPhotoFile = async (payload, appConfig) => {
     fieldname: "photo",
     originalname: `${safeEmployeeId || "employee"}-photo.${extension}`,
     mimetype: photoMimeType,
-    size: Number(metadata.size || buffer.length),
+    size: buffer.length,
     buffer,
   };
 };
@@ -202,7 +215,7 @@ const getMissingFields = (payload) => {
     ["bloodGroup", payload.bloodGroup],
     ["phone", payload.phone],
     ["email", payload.email],
-    ["photoFileId", payload.photoFileId],
+    ["photoBase64", payload.photoBase64],
   ]
     .filter(([, value]) => !value)
     .map(([field]) => field);
@@ -210,14 +223,14 @@ const getMissingFields = (payload) => {
 
 exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
   try {
-    const appConfig = getAppConfig();
+    const appConfig = await getRuntimeAppConfig();
 
     const expectedWebhookSecret = appConfig.googleFormWebhookSecret;
 
     if (!expectedWebhookSecret) {
       return res.status(500).json({
         message:
-          "Google Form webhook secret is not configured. Add WEBHOOK_SECRET in env.",
+          "Google Form webhook secret is not configured. Add WEBHOOK_SECRET in MongoDB settings or env.",
       });
     }
 
@@ -270,7 +283,7 @@ exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
     let uploadedPhoto;
 
     try {
-      const originalPhotoFile = await buildGoogleFormPhotoFile(
+      const originalPhotoFile = buildGoogleFormPhotoFile(
         payload,
         appConfig
       );
