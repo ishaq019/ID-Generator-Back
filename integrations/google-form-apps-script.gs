@@ -1,5 +1,4 @@
-const BACKEND_URL_FALLBACK =
-  "https://accustom-suds-roving.ngrok-free.dev/api/google-form/digival-card";
+const BACKEND_URL_FALLBACK = "";
 
 // Update these values so they exactly match your Google Form question titles
 // or the linked response sheet column headers. Arrays allow old/new labels.
@@ -12,10 +11,27 @@ const FIELD_TITLES = {
   photo: ["ID Card Image", "Photo"]
 };
 
+function authorizeGoogleFormAutomation() {
+  const authorizationUrl =
+    getScriptSetting_("BACKEND_URL", BACKEND_URL_FALLBACK) ||
+    "https://example.com";
+
+  PropertiesService.getScriptProperties().getProperties();
+  SpreadsheetApp.getActiveSpreadsheet().getSheets()[0].getLastRow();
+  DriveApp.getRootFolder().getName();
+  UrlFetchApp.getRequest(authorizationUrl);
+
+  Logger.log(
+    "Authorization check completed. Now use the installable spreadsheet form-submit trigger."
+  );
+}
+
 function onFormSubmit(e) {
   try {
-    if (!e) {
-      throw new Error("Run this function from an installable form-submit trigger.");
+    if (!e || !e.range || !e.range.getSheet) {
+      throw new Error(
+        "Run this function from an installable spreadsheet form-submit trigger. If Apps Script asks for permissions, run authorizeGoogleFormAutomation once and approve access."
+      );
     }
 
     const secret = getScriptSetting_("WEBHOOK_SECRET", "");
@@ -30,32 +46,23 @@ function onFormSubmit(e) {
       throw new Error("Set BACKEND_URL in Apps Script project settings.");
     }
 
-    Logger.log("Trigger event keys: " + JSON.stringify(Object.keys(e)));
-    Logger.log("Posting to backend URL: " + url);
+    const rowData = getSubmittedRowData_(e);
+    const photoFileId = getUploadedFileId_(e, rowData, FIELD_TITLES.photo);
 
-    const photoFile = getUploadedFile_(e, FIELD_TITLES.photo);
-    const photoBlob = photoFile.getBlob();
+    shareUploadedFileWithBackend_(photoFileId);
 
     const payload = {
-      name: getAnswer_(e, FIELD_TITLES.name),
-      employeeId: getAnswer_(e, FIELD_TITLES.employeeId),
-      bloodGroup: getAnswer_(e, FIELD_TITLES.bloodGroup),
-      phone: getAnswer_(e, FIELD_TITLES.phone),
-      email: getAnswer_(e, FIELD_TITLES.email),
-      photoBase64: Utilities.base64Encode(photoBlob.getBytes()),
-      photoMimeType: photoBlob.getContentType(),
-      submissionId: getSubmissionId_(e)
+      name: getAnswer_(e, rowData, FIELD_TITLES.name),
+      employeeId: getAnswer_(e, rowData, FIELD_TITLES.employeeId),
+      bloodGroup: getAnswer_(e, rowData, FIELD_TITLES.bloodGroup),
+      phone: getAnswer_(e, rowData, FIELD_TITLES.phone),
+      email: getAnswer_(e, rowData, FIELD_TITLES.email),
+      photoFileId: photoFileId,
+      submissionId: getSubmissionId_(e, rowData)
     };
 
-    Logger.log("Payload without image: " + JSON.stringify({
-      name: payload.name,
-      employeeId: payload.employeeId,
-      bloodGroup: payload.bloodGroup,
-      phone: payload.phone,
-      email: payload.email,
-      photoMimeType: payload.photoMimeType,
-      submissionId: payload.submissionId
-    }));
+    Logger.log("Posting to backend URL: " + url);
+    Logger.log("Payload: " + JSON.stringify(payload));
 
     const response = UrlFetchApp.fetch(url, {
       method: "post",
@@ -79,9 +86,22 @@ function onFormSubmit(e) {
 
     return body;
   } catch (error) {
-    Logger.log("Google Form webhook error: " + error.message);
+    Logger.log("Google Sheet webhook error: " + error.message);
+
+    if (isAuthorizationError_(error)) {
+      Logger.log(
+        "Authorization required. In Apps Script, run authorizeGoogleFormAutomation manually once, approve permissions, then submit the Form again."
+      );
+    }
+
     throw error;
   }
+}
+
+function isAuthorizationError_(error) {
+  return /permission|authorization|required permissions/i.test(
+    String(error && error.message ? error.message : error)
+  );
 }
 
 function getScriptSetting_(key, fallback) {
@@ -90,16 +110,97 @@ function getScriptSetting_(key, fallback) {
   ).trim();
 }
 
-function getAnswer_(e, titles) {
+function shareUploadedFileWithBackend_(fileId) {
+  const readerEmails = getReaderEmails_();
+
+  if (readerEmails.length === 0) {
+    Logger.log(
+      "No BACKEND_DRIVE_READER_EMAILS script property set. Skipping file sharing."
+    );
+    return;
+  }
+
+  try {
+    const file = DriveApp.getFileById(fileId);
+
+    for (let i = 0; i < readerEmails.length; i += 1) {
+      file.addViewer(readerEmails[i]);
+      Logger.log(
+        "Granted uploaded file read access to backend account: " +
+          readerEmails[i]
+      );
+    }
+  } catch (error) {
+    throw new Error(
+      "Could not grant backend Drive account access to uploaded file " +
+        fileId +
+        ": " +
+        error.message
+    );
+  }
+}
+
+function getReaderEmails_() {
+  const value =
+    getScriptSetting_("BACKEND_DRIVE_READER_EMAILS", "") ||
+    getScriptSetting_("BACKEND_DRIVE_READER_EMAIL", "");
+
+  return value
+    .split(",")
+    .map(function (email) {
+      return String(email || "").trim();
+    })
+    .filter(function (email) {
+      return Boolean(email);
+    });
+}
+
+function getSubmittedRowData_(e) {
+  const sheet = e.range.getSheet();
+  const row = e.range.getRow();
+  const lastColumn = sheet.getLastColumn();
+  const headers = sheet
+    .getRange(1, 1, 1, lastColumn)
+    .getDisplayValues()[0]
+    .map(function (header) {
+      return String(header || "").trim();
+    });
+  const values = sheet
+    .getRange(row, 1, 1, lastColumn)
+    .getDisplayValues()[0]
+    .map(function (value) {
+      return String(value || "").trim();
+    });
+  const byHeader = {};
+  const normalizedHeaderMap = {};
+
+  for (let i = 0; i < headers.length; i += 1) {
+    if (!headers[i]) continue;
+
+    byHeader[headers[i]] = values[i] || "";
+    normalizedHeaderMap[normalizeLookupKey_(headers[i])] = headers[i];
+  }
+
+  return {
+    sheet: sheet,
+    row: row,
+    headers: headers,
+    values: values,
+    byHeader: byHeader,
+    normalizedHeaderMap: normalizedHeaderMap
+  };
+}
+
+function getAnswer_(e, rowData, titles) {
   const titleList = normalizeTitles_(titles);
 
   for (let i = 0; i < titleList.length; i += 1) {
     const title = titleList[i];
-    const fromResponse = getAnswerFromFormResponse_(e, title);
-    if (fromResponse) return fromResponse;
-
     const fromNamedValues = getAnswerFromNamedValues_(e, title);
     if (fromNamedValues) return fromNamedValues;
+
+    const fromSheetRow = getAnswerFromSheetRow_(rowData, title);
+    if (fromSheetRow) return fromSheetRow;
   }
 
   return "";
@@ -107,8 +208,38 @@ function getAnswer_(e, titles) {
 
 function getAnswerFromNamedValues_(e, title) {
   const namedValues = e.namedValues || {};
-  const value = namedValues[title];
 
+  if (Object.prototype.hasOwnProperty.call(namedValues, title)) {
+    return normalizeNamedValue_(namedValues[title]);
+  }
+
+  const normalizedTitle = normalizeLookupKey_(title);
+  const keys = Object.keys(namedValues);
+
+  for (let i = 0; i < keys.length; i += 1) {
+    if (normalizeLookupKey_(keys[i]) === normalizedTitle) {
+      return normalizeNamedValue_(namedValues[keys[i]]);
+    }
+  }
+
+  return "";
+}
+
+function getAnswerFromSheetRow_(rowData, title) {
+  if (Object.prototype.hasOwnProperty.call(rowData.byHeader, title)) {
+    return String(rowData.byHeader[title] || "").trim();
+  }
+
+  const actualHeader = rowData.normalizedHeaderMap[normalizeLookupKey_(title)];
+
+  if (actualHeader) {
+    return String(rowData.byHeader[actualHeader] || "").trim();
+  }
+
+  return "";
+}
+
+function normalizeNamedValue_(value) {
   if (Array.isArray(value)) {
     return String(value[0] || "").trim();
   }
@@ -116,107 +247,44 @@ function getAnswerFromNamedValues_(e, title) {
   return String(value || "").trim();
 }
 
-function getAnswerFromFormResponse_(e, title) {
-  if (!e.response || !e.response.getItemResponses) return "";
-
-  const itemResponses = e.response.getItemResponses();
-
-  for (let i = 0; i < itemResponses.length; i += 1) {
-    const itemResponse = itemResponses[i];
-    const itemTitle = String(itemResponse.getItem().getTitle()).trim();
-
-    if (itemTitle === title) {
-      const response = itemResponse.getResponse();
-
-      if (Array.isArray(response)) {
-        return String(response[0] || "").trim();
-      }
-
-      return String(response || "").trim();
-    }
-  }
-
-  return "";
-}
-
-function getUploadedFile_(e, titles) {
+function getUploadedFileId_(e, rowData, titles) {
   const titleList = normalizeTitles_(titles);
-  let fileId = "";
 
   for (let i = 0; i < titleList.length; i += 1) {
     const title = titleList[i];
+    let fileId = extractDriveFileId_(getAnswerFromNamedValues_(e, title));
 
-    // Method 1: Best method for "From form" trigger.
-    fileId = getFileIdFromFormResponse_(e, title);
-
-    // Method 2: Works when namedValues contains Drive URL or file ID.
     if (!fileId) {
-      const answer = getAnswerFromNamedValues_(e, title);
-      fileId = extractDriveFileId_(answer);
+      fileId = extractDriveFileId_(getAnswerFromSheetRow_(rowData, title));
     }
 
-    // Method 3: Works for "From spreadsheet" trigger with rich-text link in cell.
     if (!fileId) {
-      fileId = getFileIdFromSheetCell_(e, title);
+      fileId = getFileIdFromSheetCell_(rowData, title);
     }
 
     if (fileId) {
       Logger.log("Resolved uploaded file ID: " + fileId);
-      return DriveApp.getFileById(fileId);
+      return fileId;
     }
   }
 
   Logger.log("Available namedValues: " + JSON.stringify(e.namedValues || {}));
+  Logger.log("Sheet headers: " + JSON.stringify(rowData.headers));
+
   throw new Error(
-    "Could not read uploaded file for question/column: " + titleList.join(" or ")
+    "Could not extract uploaded file ID for column: " + titleList.join(" or ")
   );
 }
 
-function getFileIdFromFormResponse_(e, title) {
-  if (!e.response || !e.response.getItemResponses) return "";
-
-  const itemResponses = e.response.getItemResponses();
-
-  for (let i = 0; i < itemResponses.length; i += 1) {
-    const itemResponse = itemResponses[i];
-    const itemTitle = String(itemResponse.getItem().getTitle()).trim();
-
-    if (itemTitle === title) {
-      const response = itemResponse.getResponse();
-
-      if (Array.isArray(response)) {
-        return extractDriveFileId_(response[0]);
-      }
-
-      return extractDriveFileId_(response);
-    }
-  }
-
-  return "";
-}
-
-function getFileIdFromSheetCell_(e, title) {
-  if (!e.range || !e.range.getSheet) return "";
-
-  const sheet = e.range.getSheet();
-  const row = e.range.getRow();
-  const headers = sheet
-    .getRange(1, 1, 1, sheet.getLastColumn())
-    .getValues()[0]
-    .map(function (header) {
-      return String(header).trim();
-    });
-
-  Logger.log("Sheet headers: " + JSON.stringify(headers));
-
-  const columnIndex = headers.indexOf(title);
+function getFileIdFromSheetCell_(rowData, title) {
+  const columnIndex = getColumnIndex_(rowData, title);
 
   if (columnIndex === -1) {
     Logger.log("Column not found for title: " + title);
     return "";
   }
 
-  const cell = sheet.getRange(row, columnIndex + 1);
+  const cell = rowData.sheet.getRange(rowData.row, columnIndex + 1);
   const richTextValue = cell.getRichTextValue();
 
   if (richTextValue) {
@@ -257,6 +325,22 @@ function getFileIdFromSheetCell_(e, title) {
   return "";
 }
 
+function getColumnIndex_(rowData, title) {
+  for (let i = 0; i < rowData.headers.length; i += 1) {
+    if (rowData.headers[i] === title) {
+      return i;
+    }
+  }
+
+  const actualHeader = rowData.normalizedHeaderMap[normalizeLookupKey_(title)];
+
+  if (!actualHeader) {
+    return -1;
+  }
+
+  return rowData.headers.indexOf(actualHeader);
+}
+
 function extractDriveFileId_(value) {
   const text = String(value || "").trim();
 
@@ -281,18 +365,21 @@ function extractDriveFileId_(value) {
   return "";
 }
 
-function getSubmissionId_(e) {
-  if (e.response && e.response.getId) {
-    return e.response.getId();
-  }
+function getSubmissionId_(e, rowData) {
+  const spreadsheetId =
+    e.source && e.source.getId ? e.source.getId() : "spreadsheet";
+  const timestamp = getAnswer_(e, rowData, "Timestamp");
 
-  if (e.range && e.range.getSheet) {
-    const sheet = e.range.getSheet();
-    return sheet.getSheetId() + ":" + e.range.getRow();
-  }
-
-  const timestamp = getAnswer_(e, "Timestamp");
-  return timestamp || String(new Date().getTime());
+  return [
+    spreadsheetId,
+    rowData.sheet.getSheetId(),
+    rowData.row,
+    timestamp
+  ]
+    .filter(function (part) {
+      return Boolean(String(part || "").trim());
+    })
+    .join(":");
 }
 
 function normalizeTitles_(titles) {
@@ -309,4 +396,10 @@ function normalizeTitles_(titles) {
   return [String(titles || "").trim()].filter(function (title) {
     return Boolean(title);
   });
+}
+
+function normalizeLookupKey_(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 }

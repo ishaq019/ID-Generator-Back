@@ -1,6 +1,10 @@
 const Template = require("../models/Template");
 const GeneratedCard = require("../models/GeneratedCard");
-const { uploadBufferToDrive } = require("../utils/googleDriveStorage");
+const {
+  uploadBufferToDrive,
+  downloadDriveFileAsBuffer,
+  sanitizeFileName,
+} = require("../utils/googleDriveStorage");
 const { removeBackgroundFromUpload } = require("../utils/backgroundRemoval");
 const { getRuntimeAppConfig } = require("../utils/appConfig");
 
@@ -44,6 +48,28 @@ const FIELD_ALIASES = {
     "image_base64",
     "Photo Base64",
     "Image Base64",
+  ],
+  photoFileId: [
+    "photoFileId",
+    "photo_file_id",
+    "imageFileId",
+    "image_file_id",
+    "driveFileId",
+    "googleDriveFileId",
+    "photoDriveFileId",
+    "fileId",
+    "photoFileUrl",
+    "photo_file_url",
+    "photoUrl",
+    "photo_url",
+    "driveFileUrl",
+    "googleDriveFileUrl",
+    "Photo File ID",
+    "Image File ID",
+    "Google Drive File ID",
+    "Photo File URL",
+    "Photo URL",
+    "Google Drive File URL",
   ],
   photoMimeType: [
     "photoMimeType",
@@ -130,6 +156,7 @@ const normalizeGoogleFormPayload = (body) => {
     phone: getBodyValue(body, "phone"),
     email: getBodyValue(body, "email").toLowerCase(),
     photoBase64: getBodyValue(body, "photoBase64"),
+    photoFileId: getBodyValue(body, "photoFileId"),
     photoMimeType: getBodyValue(body, "photoMimeType"),
     submissionId: getBodyValue(body, "submissionId"),
   };
@@ -153,7 +180,47 @@ const stripBase64Prefix = value => {
     .replace(/\s/g, "");
 };
 
-const buildGoogleFormPhotoFile = (payload, appConfig) => {
+const getSafeEmployeeId = employeeId => {
+  return (
+    String(employeeId || "employee")
+      .replace(/[^\w.-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "employee"
+  );
+};
+
+const extractDriveFileId = value => {
+  const text = String(value || "").trim();
+
+  if (!text) return "";
+
+  const patterns = [
+    /[?&]id=([a-zA-Z0-9_-]{20,})/,
+    /\/d\/([a-zA-Z0-9_-]{20,})/,
+    /open\?id=([a-zA-Z0-9_-]{20,})/,
+    /file\/d\/([a-zA-Z0-9_-]{20,})/,
+    /^([a-zA-Z0-9_-]{20,})$/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (match) {
+      return match[1] || match[0];
+    }
+  }
+
+  return "";
+};
+
+const assertGoogleFormPhotoSize = (size, appConfig) => {
+  if (size > appConfig.googleFormPhotoMaxBytes) {
+    const error = new Error("Google Form photo file is too large");
+    error.statusCode = 413;
+    throw error;
+  }
+};
+
+const buildGoogleFormPhotoFileFromBase64 = (payload, appConfig) => {
   const photoMimeType = String(payload.photoMimeType || "image/png")
     .trim()
     .toLowerCase();
@@ -174,11 +241,7 @@ const buildGoogleFormPhotoFile = (payload, appConfig) => {
 
   const estimatedBytes = Math.floor((photoBase64.length * 3) / 4);
 
-  if (estimatedBytes > appConfig.googleFormPhotoMaxBytes) {
-    const error = new Error("Google Form photo file is too large");
-    error.statusCode = 413;
-    throw error;
-  }
+  assertGoogleFormPhotoSize(estimatedBytes, appConfig);
 
   const buffer = Buffer.from(photoBase64, "base64");
 
@@ -188,15 +251,9 @@ const buildGoogleFormPhotoFile = (payload, appConfig) => {
     throw error;
   }
 
-  if (buffer.length > appConfig.googleFormPhotoMaxBytes) {
-    const error = new Error("Google Form photo file is too large");
-    error.statusCode = 413;
-    throw error;
-  }
+  assertGoogleFormPhotoSize(buffer.length, appConfig);
 
-  const safeEmployeeId = String(payload.employeeId || "employee")
-    .replace(/[^\w.-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const safeEmployeeId = getSafeEmployeeId(payload.employeeId);
   const extension = getPhotoExtension(photoMimeType);
 
   return {
@@ -208,17 +265,85 @@ const buildGoogleFormPhotoFile = (payload, appConfig) => {
   };
 };
 
+const buildGoogleFormPhotoFileFromDrive = async (payload, appConfig) => {
+  const photoFileId = extractDriveFileId(payload.photoFileId);
+
+  if (!photoFileId) {
+    const error = new Error("Google Form photoFileId is invalid");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const { buffer, metadata } = await downloadDriveFileAsBuffer(photoFileId);
+  const photoMimeType = String(metadata?.mimeType || "")
+    .trim()
+    .toLowerCase();
+
+  if (!photoMimeType.startsWith("image/")) {
+    const error = new Error(
+      "Google Drive file for Google Form photo must be an image",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!buffer.length) {
+    const error = new Error("Google Drive file for Google Form photo is empty");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  assertGoogleFormPhotoSize(buffer.length, appConfig);
+
+  const safeEmployeeId = getSafeEmployeeId(payload.employeeId);
+  const extension = getPhotoExtension(photoMimeType);
+  const originalname = sanitizeFileName(
+    metadata?.name || `${safeEmployeeId}-photo.${extension}`,
+  );
+
+  return {
+    fieldname: "photo",
+    originalname,
+    mimetype: photoMimeType,
+    size: buffer.length,
+    buffer,
+  };
+};
+
+const buildGoogleFormPhotoFile = async (payload, appConfig) => {
+  // Primary Google Sheet flow: Apps Script sends the Drive file ID only.
+  if (payload.photoFileId) {
+    return buildGoogleFormPhotoFileFromDrive(payload, appConfig);
+  }
+
+  // Legacy webhook fallback: older scripts sent the image bytes directly.
+  if (payload.photoBase64) {
+    return buildGoogleFormPhotoFileFromBase64(payload, appConfig);
+  }
+
+  const error = new Error(
+    "Google Form payload must include photoFileId or photoBase64",
+  );
+  error.statusCode = 400;
+  throw error;
+};
+
 const getMissingFields = (payload) => {
-  return [
+  const missingFields = [
     ["name", payload.name],
     ["employeeId", payload.employeeId],
     ["bloodGroup", payload.bloodGroup],
     ["phone", payload.phone],
     ["email", payload.email],
-    ["photoBase64", payload.photoBase64],
   ]
     .filter(([, value]) => !value)
     .map(([field]) => field);
+
+  if (!payload.photoBase64 && !payload.photoFileId) {
+    missingFields.push("photoBase64 or photoFileId");
+  }
+
+  return missingFields;
 };
 
 exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
@@ -283,14 +408,12 @@ exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
     let uploadedPhoto;
 
     try {
-      const originalPhotoFile = buildGoogleFormPhotoFile(
+      const originalPhotoFile = await buildGoogleFormPhotoFile(
         payload,
         appConfig
       );
 
-      const safeEmployeeId = String(payload.employeeId || "employee")
-        .replace(/[^\w.-]+/g, "-")
-        .replace(/^-+|-+$/g, "");
+      const safeEmployeeId = getSafeEmployeeId(payload.employeeId);
       const stablePhotoName = `${safeEmployeeId || "employee"}-photo.png`;
       const shouldRemoveBg =
         appConfig.backgroundRemovalEnabled !== false &&
@@ -313,8 +436,12 @@ exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
         replaceExisting: true,
       });
     } catch (uploadError) {
+      const isDriveDownloadError = Boolean(uploadError.driveStatusCode);
+
       return res.status(uploadError.statusCode || 502).json({
-        message: "Google Form photo could not be read or saved to Google Drive",
+        message: isDriveDownloadError
+          ? "Google Form photoFileId could not be downloaded from Google Drive"
+          : "Google Form photo could not be read or saved to Google Drive",
         error: uploadError.message,
       });
     }

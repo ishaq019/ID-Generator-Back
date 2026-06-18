@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "nodemon server.js"
+    "dev": "nodemon server.js",
+    "check:drive-config": "node scripts/checkGoogleDriveConfig.js"
   },
   "dependencies": {
     "@imgly/background-removal-node": "1.4.3",

@@ -10,6 +10,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 const SETTING_ALIASES = {
   AUTH_SECRET: ["authSecret", "auth_secret"],
+  ADMIN_USERNAME: ["adminUsername", "admin_username"],
+  ADMIN_PASSWORD: ["adminPassword", "admin_password"],
   CLIENT_URL: ["clientUrl", "client_url"],
   CLIENT_URLS: ["clientUrls", "client_urls"],
   FRONTEND_URL: ["frontendUrl", "frontend_url"],
@@ -24,7 +26,13 @@ const SETTING_ALIASES = {
   ],
   GOOGLE_DRIVE_REDIRECT_URI: [
     "googleDriveRedirectUri",
-    "google_drive_redirect_uri"
+    "google_drive_redirect_uri",
+    "GOOGLE_DRIVE_REDIRECT_UR",
+    "googleDriveRedirectUr",
+    "google_drive_redirect_ur",
+    "GOOGLE_DRIVE_REDIRECT_URL",
+    "googleDriveRedirectUrl",
+    "google_drive_redirect_url"
   ],
   GOOGLE_DRIVE_REFRESH_TOKEN: [
     "googleDriveRefreshToken",
@@ -115,12 +123,34 @@ const hasConfiguredValue = (source, key) => {
   );
 };
 
+const flattenSettingsSource = (settings = {}) => {
+  const nestedSettingKeys = ["settings", "config", "values", "data", "value"];
+  const flattenedSettings = {};
+
+  for (const nestedKey of nestedSettingKeys) {
+    const nestedValue = settings?.[nestedKey];
+
+    if (
+      nestedValue &&
+      typeof nestedValue === "object" &&
+      !Array.isArray(nestedValue)
+    ) {
+      Object.assign(flattenedSettings, nestedValue);
+    }
+  }
+
+  Object.assign(flattenedSettings, settings);
+
+  return flattenedSettings;
+};
+
 const readSetting = (settings, key) => {
   const keys = [key, ...(SETTING_ALIASES[key] || [])];
+  const normalizedSettings = flattenSettingsSource(settings);
 
   for (const candidateKey of keys) {
-    if (hasConfiguredValue(settings, candidateKey)) {
-      return settings[candidateKey];
+    if (hasConfiguredValue(normalizedSettings, candidateKey)) {
+      return normalizedSettings[candidateKey];
     }
   }
 
@@ -161,6 +191,8 @@ const buildAppConfig = (settings = {}) => {
     ),
     googleFormWebhookSecret: readSetting(settings, "WEBHOOK_SECRET"),
     authSecret: readSetting(settings, "AUTH_SECRET"),
+    adminUsername: readSetting(settings, "ADMIN_USERNAME"),
+    adminPassword: readSetting(settings, "ADMIN_PASSWORD"),
     webhookUrl:
       readSetting(settings, "WEBHOOK_URL") ||
       readSetting(settings, "WEEBHOOK_URL"),

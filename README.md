@@ -18,11 +18,94 @@ copy .env.example .env
 npm run dev
 ```
 
+## Heroku GUI Deployment
+
+This backend folder is deployable as a standalone Heroku Node app. It includes:
+
+```txt
+Procfile
+app.json
+package.json
+package-lock.json
+server.js
+```
+
+One-click deploy from the backend repo:
+
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/ishaq019/ID-Generator-Back)
+
+Manual Heroku Dashboard deploy:
+
+1. Push this backend repo to GitHub.
+2. Open `https://dashboard.heroku.com`, then choose `New` -> `Create new app`.
+3. Open `Settings` -> `Config Vars` and add the values below. Do not add `PORT`; Heroku sets it automatically.
+4. Required config vars:
+
+```txt
+MONGO_URI=your MongoDB Atlas connection string
+AUTH_SECRET=a long random secret
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=a strong admin password
+WEBHOOK_SECRET=a long random secret for Apps Script
+NODE_ENV=production
+```
+
+5. Add Google Drive config vars if uploads or Google Form generation will be used:
+
+```txt
+GOOGLE_DRIVE_FOLDER_ID=your Drive folder ID
+GOOGLE_DRIVE_CLIENT_ID=your OAuth client ID
+GOOGLE_DRIVE_CLIENT_SECRET=your OAuth client secret
+GOOGLE_DRIVE_REDIRECT_URI=https://developers.google.com/oauthplayground
+GOOGLE_DRIVE_REFRESH_TOKEN=your OAuth refresh token
+```
+
+6. Optional Heroku-friendly defaults:
+
+```txt
+BACKGROUND_REMOVAL_ENABLED=false
+GOOGLE_FORM_REMOVE_BG=false
+REQUEST_BODY_LIMIT=50mb
+UPLOAD_FILE_SIZE_LIMIT=5mb
+GOOGLE_FORM_PHOTO_MAX_SIZE=10mb
+```
+
+7. Open the `Deploy` tab, choose `GitHub`, connect `ID-Generator-Back`, select the branch, then click `Deploy Branch`.
+8. Open `Resources` and make sure the `web` dyno is enabled.
+9. Test the deployed API:
+
+```txt
+https://your-heroku-app-name.herokuapp.com/health
+```
+
+Expected response:
+
+```json
+{ "status": "ok" }
+```
+
+After deployment, update the frontend deployment with:
+
+```txt
+VITE_API_BASE_URL=https://your-heroku-app-name.herokuapp.com/api
+```
+
+For Google Apps Script, set script property:
+
+```txt
+BACKEND_URL=https://your-heroku-app-name.herokuapp.com/api/google-form/digival-card
+WEBHOOK_SECRET=the same value as Heroku WEBHOOK_SECRET
+```
+
+If MongoDB Atlas blocks the connection, open Atlas `Network Access` and allow access for the Heroku app. For a simple first deploy, many projects use `0.0.0.0/0`; tighten this later if your hosting/network plan allows it.
+
 ## Environment Fallbacks
 
 ```txt
 MONGO_URI=your MongoDB connection string
 AUTH_SECRET=a long random secret used to sign admin auth tokens
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=a strong admin password
 WEBHOOK_SECRET=a long random secret shared with Apps Script
 CLIENT_URL=http://localhost:5175
 CLIENT_URLS=http://localhost:5173,http://localhost:5175
@@ -39,11 +122,23 @@ The backend reads app config from MongoDB first. These `.env` values are fallbac
 
 For Google Drive uploads, generate the refresh token from the same Google account that owns or can edit the target Drive folder. Enable the Google Drive API in the Google Cloud project that owns the OAuth client. Service-account credentials are still supported as a fallback through `GOOGLE_CLIENT_EMAIL` and `GOOGLE_PRIVATE_KEY`.
 
+If Google Drive calls fail with `invalid_grant`, the backend OAuth refresh token is no longer valid. Regenerate `GOOGLE_DRIVE_REFRESH_TOKEN` with the same `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, and redirect URI, then update the MongoDB `settings` document or `.env` and redeploy/restart the backend. For Google Cloud OAuth consent screens in Testing mode, refresh tokens can expire; move the app to Production or regenerate the token when needed.
+
+You can verify what the backend resolves from MongoDB without printing secrets:
+
+```bash
+npm run check:drive-config
+```
+
+This prints detected Mongo keys, masked credential fingerprints, and whether Google accepts the configured refresh token.
+
 Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `GOOGLE_FORM_REMOVE_BG`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
 
 ## MongoDB Config
 
-Create one admin document in the `static_auth` collection. The app does not expose an admin setup page or setup endpoint.
+Easy admin setup: set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` or in the MongoDB `settings` document.
+
+Optional fallback: create one admin document in the `static_auth` collection. The app does not expose an admin setup page or setup endpoint.
 
 ```json
 {
@@ -59,6 +154,8 @@ Create one app settings document in the `settings` collection. Each field is rea
 {
   "key": "app-settings",
   "AUTH_SECRET": "a long random secret used to sign admin auth tokens",
+  "ADMIN_USERNAME": "admin",
+  "ADMIN_PASSWORD": "a strong admin password",
   "CLIENT_URL": "http://localhost:5175",
   "WEBHOOK_SECRET": "a long random secret shared with Apps Script",
   "GOOGLE_DRIVE_FOLDER_ID": "your Drive folder ID",
@@ -71,7 +168,7 @@ Create one app settings document in the `settings` collection. Each field is rea
 
 The backend also supports optional `CLIENT_URLS`, `WEBHOOK_URL`, `UPLOAD_FILE_SIZE_LIMIT`, `GOOGLE_FORM_PHOTO_MAX_SIZE`, and background-removal fields in the same `app-settings` document.
 
-After creating `static_auth`, use `POST /api/auth/login`.
+After setting admin credentials, use `POST /api/auth/login`.
 
 ## Image Upload Endpoint
 
@@ -90,7 +187,7 @@ The response includes `imageUrl`, `fileId`, and `file` metadata. `imageUrl` poin
 ## Google Form Endpoint
 
 ```txt
-POST https://id-generator-backend-jet.vercel.app/api/google-form/digival-card
+POST https://your-heroku-app-name.herokuapp.com/api/google-form/digival-card
 ```
 
 Required header:
@@ -108,19 +205,28 @@ Required JSON fields:
   "bloodGroup": "O+",
   "phone": "9876543210",
   "email": "employee@example.com",
-  "photoBase64": "base64 encoded image bytes from Apps Script",
-  "photoMimeType": "image/png",
+  "photoFileId": "google drive file id from the Form upload cell",
   "submissionId": "unique google sheet row id"
 }
 ```
 
-The Apps Script reads the Google Form upload, sends the image bytes as base64, and the backend removes the background before uploading the processed image to Google Drive. The backend Google Drive credentials only need access to the output folder configured by `GOOGLE_DRIVE_FOLDER_ID`.
+The Apps Script runs from the linked Google Sheet, reads the submitted row, extracts the uploaded image's Drive file ID, and sends `photoFileId` to the backend. The backend downloads that file, removes the background when enabled, and uploads the processed image to the output folder configured by `GOOGLE_DRIVE_FOLDER_ID`. Legacy `photoBase64` plus `photoMimeType` payloads are still accepted as a fallback.
+
+The backend Google Drive credentials must be able to read the Form-uploaded source file and write to the output folder. Use OAuth credentials for an account with both permissions, or set the Apps Script `BACKEND_DRIVE_READER_EMAILS` property to the backend service account/OAuth account email so the script grants read access to each uploaded source file before sending the webhook.
 
 The Apps Script copy is in:
 
 ```txt
 backend/integrations/google-form-apps-script.gs
 ```
+
+The Apps Script manifest with required permissions is in:
+
+```txt
+backend/integrations/appsscript.json
+```
+
+After pasting both files into Apps Script, run `authorizeGoogleFormAutomation` once from the editor and approve permissions. This grants the spreadsheet, Drive, script properties, and URL fetch scopes needed by the installable trigger.
 
 ## Health Checks
 
@@ -130,6 +236,6 @@ GET /health
 GET /api/google-form/health
 ```
 
-## Vercel Note
+## Hosted Storage Note
 
-Vercel does not provide persistent local upload storage. Uploaded images are stored in Google Drive and card records keep Drive-backed `/api/files/:fileId` URLs in MongoDB.
+Heroku and other hosted Node platforms do not provide reliable persistent local upload storage for app files. Uploaded images are stored in Google Drive and card records keep Drive-backed `/api/files/:fileId` URLs in MongoDB.

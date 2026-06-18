@@ -1,5 +1,8 @@
 const { createAuthToken } = require("../utils/authTokenService");
-const { validateAdminLogin } = require("../utils/staticAuthService");
+const {
+  STATIC_AUTH_KEY,
+  validateAdminLogin
+} = require("../utils/staticAuthService");
 
 const login = async (req, res, next) => {
   const username = String(req.body?.username || "").trim();
@@ -19,7 +22,7 @@ const login = async (req, res, next) => {
       return res.status(503).json({
         success: false,
         message:
-          'Admin account is not configured. Add the "admin-signin" document in MongoDB static_auth collection.'
+          `Admin account is not configured. Set ADMIN_USERNAME and ADMIN_PASSWORD, or add the "${STATIC_AUTH_KEY}" document in MongoDB static_auth collection.`
       });
     }
 

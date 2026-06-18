@@ -176,6 +176,71 @@ const streamToBuffer = async stream => {
   return Buffer.concat(chunks);
 };
 
+const getGoogleApiStatus = error => {
+  return Number(error?.code || error?.response?.status || error?.status) || 0;
+};
+
+const getGoogleApiErrorText = error => {
+  const responseData = error?.response?.data || {};
+  const errors = Array.isArray(error?.errors)
+    ? error.errors.map(entry => entry.message).join(" ")
+    : "";
+
+  return [
+    error?.message,
+    responseData.error,
+    responseData.error_description,
+    errors
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
+
+const isInvalidOAuthGrantError = error => {
+  return /invalid_grant/i.test(getGoogleApiErrorText(error));
+};
+
+const createDriveDownloadError = (fileId, error) => {
+  const status = getGoogleApiStatus(error);
+  const message =
+    getGoogleApiErrorText(error) || "Unknown Google Drive error";
+  const invalidGrantMessage =
+    "Google Drive OAuth refresh token is invalid, expired, revoked, or " +
+    "does not match the configured Google OAuth client. Regenerate " +
+    "GOOGLE_DRIVE_REFRESH_TOKEN with the same GOOGLE_DRIVE_CLIENT_ID and " +
+    "GOOGLE_DRIVE_CLIENT_SECRET, update MongoDB settings or env, then " +
+    "redeploy/restart the backend.";
+  const accessMessage =
+    `Google Drive file ${fileId} cannot be accessed by the backend ` +
+    "credentials. Share the uploaded Form file or response upload folder " +
+    "with the backend Google Drive account/service account.";
+  const notFoundMessage =
+    `Google Drive file ${fileId} was not found or is not visible to the ` +
+    "backend Google Drive credentials.";
+  let userMessage = `Google Drive file ${fileId} could not be downloaded: ${message}`;
+  let statusCode = 502;
+
+  if (isInvalidOAuthGrantError(error)) {
+    userMessage = invalidGrantMessage;
+  } else if (status === 400) {
+    statusCode = 400;
+  } else if (status === 403) {
+    userMessage = accessMessage;
+    statusCode = 403;
+  } else if (status === 404) {
+    userMessage = notFoundMessage;
+    statusCode = 404;
+  }
+
+  const wrappedError = new Error(userMessage);
+
+  wrappedError.statusCode = statusCode;
+  wrappedError.driveStatusCode = status;
+  wrappedError.cause = error;
+
+  return wrappedError;
+};
+
 const getDriveFileMetadata = async fileId => {
   const drive = await getGoogleDrive();
 
@@ -189,26 +254,45 @@ const getDriveFileMetadata = async fileId => {
 };
 
 const downloadDriveFileAsBuffer = async (fileId, existingMetadata = null) => {
-  const drive = await getGoogleDrive();
-  const metadata = existingMetadata || (await getDriveFileMetadata(fileId));
+  const safeFileId = String(fileId || "").trim();
 
-  const mediaResponse = await drive.files.get(
-    {
-      fileId,
-      alt: "media",
-      supportsAllDrives: true
-    },
-    {
-      responseType: "stream"
-    }
-  );
+  if (!/^[a-zA-Z0-9_-]+$/.test(safeFileId)) {
+    const error = new Error("Invalid Google Drive file ID");
+    error.statusCode = 400;
+    throw error;
+  }
 
-  const buffer = await streamToBuffer(mediaResponse.data);
+  try {
+    const drive = await getGoogleDrive();
+    const metadata =
+      existingMetadata || (await getDriveFileMetadata(safeFileId));
 
-  return {
-    buffer,
-    metadata
-  };
+    const mediaResponse = await drive.files.get(
+      {
+        fileId: safeFileId,
+        alt: "media",
+        supportsAllDrives: true
+      },
+      {
+        responseType: "stream"
+      }
+    );
+
+    const buffer = await streamToBuffer(mediaResponse.data);
+
+    return {
+      buffer,
+      metadata: {
+        id: safeFileId,
+        name: metadata?.name || "",
+        mimeType: metadata?.mimeType || "",
+        size: metadata?.size || "",
+        ...metadata
+      }
+    };
+  } catch (error) {
+    throw createDriveDownloadError(safeFileId, error);
+  }
 };
 
 module.exports = {

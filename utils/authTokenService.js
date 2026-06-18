@@ -1,18 +1,17 @@
 const crypto = require("crypto");
 const { getRuntimeAppConfig } = require("./appConfig");
 
-const TOKEN_EXPIRES_IN_HOURS = 24;
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 let developmentAuthSecret = null;
 
-const isProductionRuntime = () => {
-  return process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
-};
+const isProductionRuntime = () =>
+  process.env.NODE_ENV === "production" || Boolean(process.env.VERCEL);
 
 const getAuthSecret = async () => {
-  const appConfig = await getRuntimeAppConfig();
+  const { authSecret } = await getRuntimeAppConfig();
 
-  if (appConfig.authSecret) {
-    return appConfig.authSecret;
+  if (authSecret) {
+    return authSecret;
   }
 
   if (isProductionRuntime()) {
@@ -29,26 +28,22 @@ const getAuthSecret = async () => {
   return developmentAuthSecret;
 };
 
-const assertAuthSecretConfigured = async () => {
-  await getAuthSecret();
-};
+const assertAuthSecretConfigured = () => getAuthSecret();
 
-const toBase64Url = value => {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-};
+const encodePayload = payload =>
+  Buffer.from(JSON.stringify(payload)).toString("base64url");
 
-const fromBase64Url = value => {
-  return JSON.parse(Buffer.from(value, "base64url").toString("utf8"));
-};
+const decodePayload = payload =>
+  JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
 
-const createSignature = async payload => {
+const sign = async value => {
   return crypto
     .createHmac("sha256", await getAuthSecret())
-    .update(payload)
+    .update(value)
     .digest("base64url");
 };
 
-const hasValidSignature = (signature, expectedSignature) => {
+const safeEqual = (signature, expectedSignature) => {
   const actual = Buffer.from(String(signature || ""), "base64url");
   const expected = Buffer.from(String(expectedSignature || ""), "base64url");
 
@@ -60,49 +55,40 @@ const hasValidSignature = (signature, expectedSignature) => {
 };
 
 const createAuthToken = async username => {
-  const payload = {
+  const encodedPayload = encodePayload({
     username,
     role: "admin",
-    exp: Date.now() + TOKEN_EXPIRES_IN_HOURS * 60 * 60 * 1000
-  };
+    exp: Date.now() + TOKEN_TTL_MS
+  });
 
-  const encodedPayload = toBase64Url(payload);
-  const signature = await createSignature(encodedPayload);
-
-  return `${encodedPayload}.${signature}`;
+  return `${encodedPayload}.${await sign(encodedPayload)}`;
 };
 
 const verifyAuthToken = async token => {
   try {
-    if (!token || !token.includes(".")) {
+    const [encodedPayload, signature, extra] = String(token || "").split(".");
+
+    if (!encodedPayload || !signature || extra) {
       return null;
     }
 
-    const parts = token.split(".");
+    const expectedSignature = await sign(encodedPayload);
 
-    if (parts.length !== 2) {
+    if (!safeEqual(signature, expectedSignature)) {
       return null;
     }
 
-    const [encodedPayload, signature] = parts;
+    const payload = decodePayload(encodedPayload);
+    const expiresAt = Number(payload.exp || payload.expiresAt);
 
-    if (!encodedPayload || !signature) {
+    if (!payload?.username || !expiresAt || Date.now() > expiresAt) {
       return null;
     }
 
-    const expectedSignature = await createSignature(encodedPayload);
-
-    if (!hasValidSignature(signature, expectedSignature)) {
-      return null;
-    }
-
-    const payload = fromBase64Url(encodedPayload);
-
-    if (!payload?.username || !payload?.exp || Date.now() > payload.exp) {
-      return null;
-    }
-
-    return payload;
+    return {
+      username: payload.username,
+      role: payload.role || "admin"
+    };
   } catch {
     return null;
   }

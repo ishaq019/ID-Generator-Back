@@ -5,14 +5,14 @@ const appSettingSchema = new mongoose.Schema(
     key: {
       type: String,
       required: true,
-      unique: true
-    }
+      unique: true,
+    },
   },
   {
     collection: "settings",
     strict: false,
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
 module.exports =

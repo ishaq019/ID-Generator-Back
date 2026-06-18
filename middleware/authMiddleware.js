@@ -1,24 +1,29 @@
 const { verifyAuthToken } = require("../utils/authTokenService");
 
+const getBearerToken = req => {
+  const parts = String(req.headers.authorization || "").trim().split(/\s+/);
+  return parts.length === 2 && /^Bearer$/i.test(parts[0]) ? parts[1] : "";
+};
+
+const rejectUnauthorized = (res, message) => {
+  return res.status(401).json({
+    success: false,
+    message
+  });
+};
+
 const protect = async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization || "";
+    const token = getBearerToken(req);
 
-    if (!authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({
-        success: false,
-        message: "Authentication token is missing"
-      });
+    if (!token) {
+      return rejectUnauthorized(res, "Authentication token is missing");
     }
 
-    const token = authHeader.split(" ")[1];
     const decoded = await verifyAuthToken(token);
 
     if (!decoded) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid or expired authentication token"
-      });
+      return rejectUnauthorized(res, "Invalid or expired authentication token");
     }
 
     req.user = {

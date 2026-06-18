@@ -1,0 +1,92 @@
+{
+  "name": "ID Generator Backend",
+  "description": "Express and MongoDB API for the MERN ID card generator.",
+  "repository": "https://github.com/ishaq019/ID-Generator-Back",
+  "keywords": ["node", "express", "mongodb", "id-card"],
+  "success_url": "/health",
+  "buildpacks": [
+    {
+      "url": "heroku/nodejs"
+    }
+  ],
+  "env": {
+    "NODE_ENV": {
+      "description": "Runs the backend with production-only behavior.",
+      "value": "production"
+    },
+    "MONGO_URI": {
+      "description": "MongoDB Atlas connection string for the ID Generator database.",
+      "required": true
+    },
+    "AUTH_SECRET": {
+      "description": "Long random secret used to sign admin auth tokens.",
+      "generator": "secret"
+    },
+    "ADMIN_USERNAME": {
+      "description": "Admin login username.",
+      "value": "admin"
+    },
+    "ADMIN_PASSWORD": {
+      "description": "Strong admin login password.",
+      "required": true
+    },
+    "WEBHOOK_SECRET": {
+      "description": "Shared secret sent by the Google Apps Script webhook.",
+      "generator": "secret"
+    },
+    "CLIENT_URL": {
+      "description": "Primary deployed frontend URL, for example https://your-frontend.vercel.app.",
+      "required": false
+    },
+    "CLIENT_URLS": {
+      "description": "Comma-separated list of allowed frontend URLs.",
+      "required": false
+    },
+    "REQUEST_BODY_LIMIT": {
+      "description": "Maximum JSON request body size.",
+      "value": "50mb",
+      "required": false
+    },
+    "UPLOAD_FILE_SIZE_LIMIT": {
+      "description": "Maximum admin upload image size.",
+      "value": "5mb",
+      "required": false
+    },
+    "GOOGLE_FORM_PHOTO_MAX_SIZE": {
+      "description": "Maximum Google Form photo size.",
+      "value": "10mb",
+      "required": false
+    },
+    "BACKGROUND_REMOVAL_ENABLED": {
+      "description": "Set true to enable server-side background removal. False is safer on small Heroku dynos.",
+      "value": "false",
+      "required": false
+    },
+    "GOOGLE_FORM_REMOVE_BG": {
+      "description": "Set true to remove backgrounds from Google Form photos when background removal is enabled.",
+      "value": "false",
+      "required": false
+    },
+    "GOOGLE_DRIVE_FOLDER_ID": {
+      "description": "Google Drive folder ID where generated assets are stored.",
+      "required": false
+    },
+    "GOOGLE_DRIVE_CLIENT_ID": {
+      "description": "Google OAuth client ID for Drive uploads.",
+      "required": false
+    },
+    "GOOGLE_DRIVE_CLIENT_SECRET": {
+      "description": "Google OAuth client secret for Drive uploads.",
+      "required": false
+    },
+    "GOOGLE_DRIVE_REDIRECT_URI": {
+      "description": "OAuth redirect URI used while generating the Drive refresh token.",
+      "value": "https://developers.google.com/oauthplayground",
+      "required": false
+    },
+    "GOOGLE_DRIVE_REFRESH_TOKEN": {
+      "description": "Google OAuth refresh token for the Drive account.",
+      "required": false
+    }
+  }
+}
