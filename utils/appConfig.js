@@ -52,11 +52,16 @@ const SETTING_ALIASES = {
     "background_removal_enabled"
   ],
   GOOGLE_FORM_REMOVE_BG: ["googleFormRemoveBg", "google_form_remove_bg"],
+  BG_REMOVAL_FALLBACK_ENABLED: [
+    "bgRemovalFallbackEnabled",
+    "bg_removal_fallback_enabled"
+  ],
   BG_REMOVAL_MODEL: ["bgRemovalModel", "bg_removal_model"],
   BG_REMOVAL_MAX_DIMENSION: [
     "bgRemovalMaxDimension",
     "bg_removal_max_dimension"
   ],
+  BG_REMOVAL_TIMEOUT_MS: ["bgRemovalTimeoutMs", "bg_removal_timeout_ms"],
   GOOGLE_CLIENT_EMAIL: ["googleClientEmail", "google_client_email"],
   GOOGLE_PRIVATE_KEY: ["googlePrivateKey", "google_private_key"],
   GOOGLE_SERVICE_ACCOUNT_JSON: [
@@ -104,14 +109,24 @@ const parseBytes = (value, fallback) => {
   return Math.round(amount * multipliers[unit]);
 };
 
-const parseMaxDimension = value => {
-  const dimension = Number(value || 1024);
+const parseMaxDimension = (value, fallback = 1024) => {
+  const dimension = Number(value || fallback);
 
   if (!Number.isFinite(dimension)) {
-    return 1024;
+    return fallback;
   }
 
   return Math.min(Math.max(Math.round(dimension), 256), 2048);
+};
+
+const parseTimeoutMs = (value, fallback = 22000) => {
+  const timeoutMs = Number(value || fallback);
+
+  if (!Number.isFinite(timeoutMs)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.round(timeoutMs), 5000), 28000);
 };
 
 const hasConfiguredValue = (source, key) => {
@@ -187,7 +202,9 @@ const buildAppConfig = (settings = {}) => {
   const bgRemovalModel = String(
     readSetting(settings, "BG_REMOVAL_MODEL") || "small"
   ).toLowerCase();
-  const backgroundRemovalDefault = !isHostedRuntime();
+  const hostedRuntime = isHostedRuntime();
+  const backgroundRemovalDefault = true;
+  const bgRemovalMaxDimensionDefault = hostedRuntime ? 768 : 1024;
   const corsOrigins = [
     ...DEFAULT_ALLOWED_ORIGINS,
     readSetting(settings, "CLIENT_URL"),
@@ -248,11 +265,19 @@ const buildAppConfig = (settings = {}) => {
       readEnvOverrideSetting(settings, "GOOGLE_FORM_REMOVE_BG"),
       backgroundRemovalDefault
     ),
+    bgRemovalFallbackEnabled: parseBoolean(
+      readEnvOverrideSetting(settings, "BG_REMOVAL_FALLBACK_ENABLED"),
+      true
+    ),
     bgRemovalModel: ["small", "medium"].includes(bgRemovalModel)
       ? bgRemovalModel
       : "small",
     bgRemovalMaxDimension: parseMaxDimension(
-      readSetting(settings, "BG_REMOVAL_MAX_DIMENSION")
+      readSetting(settings, "BG_REMOVAL_MAX_DIMENSION"),
+      bgRemovalMaxDimensionDefault
+    ),
+    bgRemovalTimeoutMs: parseTimeoutMs(
+      readSetting(settings, "BG_REMOVAL_TIMEOUT_MS")
     )
   };
 };

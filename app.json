@@ -58,13 +58,33 @@
       "required": false
     },
     "BACKGROUND_REMOVAL_ENABLED": {
-      "description": "Set true to enable server-side background removal. False is safer on small Heroku dynos.",
-      "value": "false",
+      "description": "Set true to enable server-side background removal. Set false as an emergency kill switch on small dynos.",
+      "value": "true",
       "required": false
     },
     "GOOGLE_FORM_REMOVE_BG": {
       "description": "Set true to remove backgrounds from Google Form photos when background removal is enabled.",
-      "value": "false",
+      "value": "true",
+      "required": false
+    },
+    "BG_REMOVAL_FALLBACK_ENABLED": {
+      "description": "Use a fast solid-background fallback if ML removal is too slow or unavailable.",
+      "value": "true",
+      "required": false
+    },
+    "BG_REMOVAL_MODEL": {
+      "description": "Background-removal ML model size. Use small on Heroku.",
+      "value": "small",
+      "required": false
+    },
+    "BG_REMOVAL_MAX_DIMENSION": {
+      "description": "Resize photo before background removal to keep Heroku processing under the request timeout.",
+      "value": "768",
+      "required": false
+    },
+    "BG_REMOVAL_TIMEOUT_MS": {
+      "description": "Maximum ML worker time before falling back to the fast solid-color remover.",
+      "value": "22000",
       "required": false
     },
     "GOOGLE_DRIVE_FOLDER_ID": {

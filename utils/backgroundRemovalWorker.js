@@ -9,9 +9,18 @@ const BG_REMOVAL_ASSET_DIR = path.dirname(BG_REMOVAL_PACKAGE_ENTRY);
 
 // Keep this worker on the remover package's sharp/libvips version. Loading it
 // in a separate process avoids native sharp conflicts with the rest of the app.
-const sharp = require(
-  path.resolve(BG_REMOVAL_ASSET_DIR, "../node_modules/sharp"),
-);
+const loadSharp = () => {
+  try {
+    return require(path.resolve(BG_REMOVAL_ASSET_DIR, "../node_modules/sharp"));
+  } catch {
+    return require("sharp");
+  }
+};
+
+const sharp = loadSharp();
+
+sharp.concurrency(1);
+sharp.cache(false);
 
 const loadRemoveBackground = async () => {
   const moduleData = await import("@imgly/background-removal-node");

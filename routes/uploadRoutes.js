@@ -2,13 +2,16 @@ const express = require("express");
 const multer = require("multer");
 const createUploadMiddleware = require("../middleware/uploadMiddleware");
 const { uploadBufferToDrive } = require("../utils/googleDriveStorage");
-const { removeBackgroundFromUpload } = require("../utils/backgroundRemoval");
 const { getRuntimeAppConfig } = require("../utils/appConfig");
 
 const router = express.Router();
 
 const shouldRemoveBackground = (value) => {
   return [true, "true", "1", "yes", "on"].includes(value);
+};
+
+const getBackgroundRemoval = () => {
+  return require("../utils/backgroundRemoval");
 };
 
 const handleUploadMiddleware = fieldName => {
@@ -37,7 +40,7 @@ const handleUploadMiddleware = fieldName => {
 
 const createUploadHandler = (fieldName) => [
   handleUploadMiddleware(fieldName),
-  async (req, res) => {
+  async (req, res, next) => {
     try {
       if (!req.file) {
         return res.status(400).json({
@@ -57,10 +60,14 @@ const createUploadHandler = (fieldName) => [
 
       if (removeBg) {
         try {
+          const { removeBackgroundFromUpload } = getBackgroundRemoval();
+
           fileToUpload = await removeBackgroundFromUpload(req.file, {
             fileName: req.body?.fileName || req.file.originalname,
             model: appConfig.bgRemovalModel,
             maxDimension: appConfig.bgRemovalMaxDimension,
+            timeoutMs: appConfig.bgRemovalTimeoutMs,
+            fallbackEnabled: appConfig.bgRemovalFallbackEnabled,
           });
         } catch (bgError) {
           console.error("BACKGROUND REMOVAL FAILED:", bgError);
@@ -85,6 +92,9 @@ const createUploadHandler = (fieldName) => [
           ? "Background removed and image uploaded successfully"
           : "Image uploaded successfully",
         backgroundRemoved: removeBg,
+        backgroundRemovalMode: removeBg
+          ? fileToUpload.backgroundRemovalMode || "ml"
+          : "none",
         imageUrl: versionedUrl,
         fileId: uploadedFile.fileId,
         file: {
@@ -95,10 +105,8 @@ const createUploadHandler = (fieldName) => [
     } catch (error) {
       console.error("UPLOAD ERROR:", error);
 
-      return res.status(500).json({
-        success: false,
-        message: error.message || "Image upload failed",
-      });
+      error.statusCode = error.statusCode || 500;
+      return next(error);
     }
   },
 ];

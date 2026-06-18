@@ -424,6 +424,8 @@ exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
             fileName: stablePhotoName,
             model: appConfig.bgRemovalModel,
             maxDimension: appConfig.bgRemovalMaxDimension,
+            timeoutMs: appConfig.bgRemovalTimeoutMs,
+            fallbackEnabled: appConfig.bgRemovalFallbackEnabled,
           })
         : {
             ...originalPhotoFile,

@@ -2,6 +2,10 @@
 
 Express/MongoDB backend for template management, generated card records, image uploads, and Google Form driven DigiVal ID card generation.
 
+## Google API Setup
+
+For step-by-step Google Drive API setup, including `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN`, Drive folder ID, Heroku config vars, MongoDB settings, and troubleshooting, read [GOOGLE_API_SETUP.md](GOOGLE_API_SETUP.md).
+
 ## Local Setup
 
 ```bash
@@ -60,11 +64,15 @@ GOOGLE_DRIVE_REDIRECT_URI=https://developers.google.com/oauthplayground
 GOOGLE_DRIVE_REFRESH_TOKEN=your OAuth refresh token
 ```
 
-6. Optional Heroku-friendly defaults:
+6. Optional Heroku-friendly background-removal defaults:
 
 ```txt
-BACKGROUND_REMOVAL_ENABLED=false
-GOOGLE_FORM_REMOVE_BG=false
+BACKGROUND_REMOVAL_ENABLED=true
+GOOGLE_FORM_REMOVE_BG=true
+BG_REMOVAL_FALLBACK_ENABLED=true
+BG_REMOVAL_MODEL=small
+BG_REMOVAL_MAX_DIMENSION=768
+BG_REMOVAL_TIMEOUT_MS=22000
 REQUEST_BODY_LIMIT=50mb
 UPLOAD_FILE_SIZE_LIMIT=5mb
 GOOGLE_FORM_PHOTO_MAX_SIZE=10mb
@@ -112,6 +120,21 @@ https://your-heroku-app-name.herokuapp.com/ready
 
 `/health` only confirms the Express server is running. `/ready` checks MongoDB, `AUTH_SECRET`, and default template seeding. If `/ready` returns `503`, open Heroku `More` -> `View logs` and check these config vars first: `MONGO_URI`, `AUTH_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `WEBHOOK_SECRET`.
 
+### Heroku Background Removal
+
+For Heroku, keep background removal enabled but bounded:
+
+```txt
+BACKGROUND_REMOVAL_ENABLED=true
+GOOGLE_FORM_REMOVE_BG=true
+BG_REMOVAL_FALLBACK_ENABLED=true
+BG_REMOVAL_MODEL=small
+BG_REMOVAL_MAX_DIMENSION=768
+BG_REMOVAL_TIMEOUT_MS=22000
+```
+
+If `BACKGROUND_REMOVAL_ENABLED` or `GOOGLE_FORM_REMOVE_BG` is set to `false` in Heroku Config Vars or in the MongoDB `settings` document, the backend will upload the original image without removing the background. Heroku Config Vars override MongoDB for these background-removal kill switches.
+
 ## Environment Fallbacks
 
 ```txt
@@ -145,7 +168,7 @@ npm run check:drive-config
 
 This prints detected Mongo keys, masked credential fingerprints, and whether Google accepts the configured refresh token.
 
-Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `GOOGLE_FORM_REMOVE_BG`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
+Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `GOOGLE_FORM_REMOVE_BG`, `BG_REMOVAL_FALLBACK_ENABLED`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, `BG_REMOVAL_TIMEOUT_MS`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
 
 ## MongoDB Config
 
