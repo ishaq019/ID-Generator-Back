@@ -167,10 +167,27 @@ const readSettingList = (settings, key) => {
   return parseList(readSetting(settings, key));
 };
 
+const readEnvOverrideSetting = (settings, key) => {
+  if (hasConfiguredValue(process.env, key)) {
+    return process.env[key];
+  }
+
+  return readSetting(settings, key);
+};
+
+const isHostedRuntime = () => {
+  return (
+    process.env.NODE_ENV === "production" ||
+    Boolean(process.env.DYNO) ||
+    Boolean(process.env.HEROKU)
+  );
+};
+
 const buildAppConfig = (settings = {}) => {
   const bgRemovalModel = String(
     readSetting(settings, "BG_REMOVAL_MODEL") || "small"
   ).toLowerCase();
+  const backgroundRemovalDefault = !isHostedRuntime();
   const corsOrigins = [
     ...DEFAULT_ALLOWED_ORIGINS,
     readSetting(settings, "CLIENT_URL"),
@@ -224,12 +241,12 @@ const buildAppConfig = (settings = {}) => {
       ? readSetting(settings, "COMPANY_ADDRESS").replace(/\\n/g, "\n")
       : DIGIVAL_ADDRESS,
     backgroundRemovalEnabled: parseBoolean(
-      readSetting(settings, "BACKGROUND_REMOVAL_ENABLED"),
-      true
+      readEnvOverrideSetting(settings, "BACKGROUND_REMOVAL_ENABLED"),
+      backgroundRemovalDefault
     ),
     googleFormRemoveBg: parseBoolean(
-      readSetting(settings, "GOOGLE_FORM_REMOVE_BG"),
-      true
+      readEnvOverrideSetting(settings, "GOOGLE_FORM_REMOVE_BG"),
+      backgroundRemovalDefault
     ),
     bgRemovalModel: ["small", "medium"].includes(bgRemovalModel)
       ? bgRemovalModel

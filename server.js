@@ -1,7 +1,6 @@
 const path = require("path");
 const express = require("express");
 const dotenv = require("dotenv");
-const cors = require("cors");
 
 dotenv.config();
 
@@ -18,6 +17,7 @@ const fileRoutes = require("./routes/fileRoutes");
 const googleFormRoutes = require("./routes/googleFormRoutes");
 
 const { protect } = require("./middleware/authMiddleware");
+const { corsMiddleware } = require("./middleware/corsMiddleware");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
 const app = express();
@@ -50,15 +50,7 @@ const ensureServerReady = async (req, res, next) => {
   }
 };
 
-const corsOptions = {
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-webhook-secret"]
-};
-
-app.use(cors(corsOptions));
-app.options("*", cors(corsOptions));
-
+app.use(corsMiddleware);
 app.use(express.json({ limit: appConfig.requestBodyLimit }));
 app.use(
   express.urlencoded({
