@@ -99,6 +99,19 @@ WEBHOOK_SECRET=the same value as Heroku WEBHOOK_SECRET
 
 If MongoDB Atlas blocks the connection, open Atlas `Network Access` and allow access for the Heroku app. For a simple first deploy, many projects use `0.0.0.0/0`; tighten this later if your hosting/network plan allows it.
 
+### Heroku 503 or Browser CORS Error
+
+If the browser says `No 'Access-Control-Allow-Origin' header` and the Network tab also shows `503 Service Unavailable`, check the Heroku app first. A Heroku `Application Error` page means the request did not reach Express, so it is usually a crashed dyno or missing production config, not a frontend CORS setting.
+
+After deployment, test:
+
+```txt
+https://your-heroku-app-name.herokuapp.com/health
+https://your-heroku-app-name.herokuapp.com/ready
+```
+
+`/health` only confirms the Express server is running. `/ready` checks MongoDB, `AUTH_SECRET`, and default template seeding. If `/ready` returns `503`, open Heroku `More` -> `View logs` and check these config vars first: `MONGO_URI`, `AUTH_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `WEBHOOK_SECRET`.
+
 ## Environment Fallbacks
 
 ```txt

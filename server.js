@@ -45,6 +45,7 @@ const ensureServerReady = async (req, res, next) => {
     await prepareServer();
     next();
   } catch (error) {
+    res.status(503);
     next(error);
   }
 };
@@ -74,6 +75,26 @@ app.get("/", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+app.get("/ready", async (req, res, next) => {
+  try {
+    await prepareServer();
+    res.json({ status: "ready" });
+  } catch (error) {
+    res.status(503);
+    next(error);
+  }
+});
+
+app.get("/health/ready", async (req, res, next) => {
+  try {
+    await prepareServer();
+    res.json({ status: "ready" });
+  } catch (error) {
+    res.status(503);
+    next(error);
+  }
 });
 
 app.use((req, res, next) => {
@@ -108,16 +129,16 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 if (!process.env.VERCEL) {
-  prepareServer()
-    .then(() => {
-      app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    })
-    .catch(error => {
-      console.error("Server startup failed:", error.message);
-      process.exit(1);
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+
+    prepareServer().catch(error => {
+      console.error("Server readiness failed:", error.message);
+      console.error(
+        "The HTTP server is still running. Fix the environment/database configuration and restart the dyno."
+      );
     });
+  });
 }
 
 module.exports = app;
