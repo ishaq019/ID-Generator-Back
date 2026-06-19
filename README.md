@@ -68,6 +68,7 @@ GOOGLE_DRIVE_REFRESH_TOKEN=your OAuth refresh token
 
 ```txt
 BACKGROUND_REMOVAL_ENABLED=true
+UPLOAD_BG_REMOVAL_MODE=solid
 GOOGLE_FORM_REMOVE_BG=true
 GOOGLE_FORM_BG_REMOVAL_MODE=solid
 BG_REMOVAL_FALLBACK_ENABLED=true
@@ -127,6 +128,7 @@ For Heroku, keep background removal enabled but bounded:
 
 ```txt
 BACKGROUND_REMOVAL_ENABLED=true
+UPLOAD_BG_REMOVAL_MODE=solid
 GOOGLE_FORM_REMOVE_BG=true
 GOOGLE_FORM_BG_REMOVAL_MODE=solid
 BG_REMOVAL_FALLBACK_ENABLED=true
@@ -135,7 +137,7 @@ BG_REMOVAL_MAX_DIMENSION=768
 BG_REMOVAL_TIMEOUT_MS=22000
 ```
 
-For Google Form submissions, `GOOGLE_FORM_BG_REMOVAL_MODE=solid` uses the fast remover that is safer on small Heroku dynos. Set it to `ml` only on a larger dyno after testing. If `BACKGROUND_REMOVAL_ENABLED` or `GOOGLE_FORM_REMOVE_BG` is set to `false`, or `GOOGLE_FORM_BG_REMOVAL_MODE` is set to `none`, the backend will upload the original image without removing the background. Heroku Config Vars override MongoDB for these background-removal kill switches.
+For admin uploads, `UPLOAD_BG_REMOVAL_MODE=solid` uses the fast remover that is safer on small Heroku dynos. For Google Form submissions, `GOOGLE_FORM_BG_REMOVAL_MODE=solid` does the same. Set either mode to `ml` only on a larger dyno after testing. If `BACKGROUND_REMOVAL_ENABLED` or `GOOGLE_FORM_REMOVE_BG` is set to `false`, or either mode is set to `none`, the backend will upload the original image without removing the background. Heroku Config Vars override MongoDB for these background-removal kill switches.
 
 ## Environment Fallbacks
 
@@ -170,7 +172,7 @@ npm run check:drive-config
 
 This prints detected Mongo keys, masked credential fingerprints, and whether Google accepts the configured refresh token.
 
-Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `GOOGLE_FORM_REMOVE_BG`, `GOOGLE_FORM_BG_REMOVAL_MODE`, `BG_REMOVAL_FALLBACK_ENABLED`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, `BG_REMOVAL_TIMEOUT_MS`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
+Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `UPLOAD_BG_REMOVAL_MODE`, `GOOGLE_FORM_REMOVE_BG`, `GOOGLE_FORM_BG_REMOVAL_MODE`, `BG_REMOVAL_FALLBACK_ENABLED`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, `BG_REMOVAL_TIMEOUT_MS`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
 
 ## MongoDB Config
 

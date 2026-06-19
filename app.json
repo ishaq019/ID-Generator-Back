@@ -62,6 +62,11 @@
       "value": "true",
       "required": false
     },
+    "UPLOAD_BG_REMOVAL_MODE": {
+      "description": "Admin upload background-removal mode. Use solid on small Heroku dynos; set ml only on larger dynos.",
+      "value": "solid",
+      "required": false
+    },
     "GOOGLE_FORM_REMOVE_BG": {
       "description": "Set true to remove backgrounds from Google Form photos when background removal is enabled.",
       "value": "true",

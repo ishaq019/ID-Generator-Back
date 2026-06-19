@@ -51,6 +51,12 @@ const SETTING_ALIASES = {
     "backgroundRemovalEnabled",
     "background_removal_enabled"
   ],
+  UPLOAD_BG_REMOVAL_MODE: [
+    "uploadBgRemovalMode",
+    "upload_bg_removal_mode",
+    "adminUploadBgRemovalMode",
+    "admin_upload_bg_removal_mode"
+  ],
   GOOGLE_FORM_REMOVE_BG: ["googleFormRemoveBg", "google_form_remove_bg"],
   GOOGLE_FORM_BG_REMOVAL_MODE: [
     "googleFormBgRemovalMode",
@@ -133,7 +139,7 @@ const parseTimeoutMs = (value, fallback = 22000) => {
   return Math.min(Math.max(Math.round(timeoutMs), 5000), 28000);
 };
 
-const parseGoogleFormBgRemovalMode = (value, fallback) => {
+const parseBgRemovalMode = (value, fallback) => {
   const mode = String(value || "")
     .trim()
     .toLowerCase();
@@ -227,7 +233,7 @@ const buildAppConfig = (settings = {}) => {
   const hostedRuntime = isHostedRuntime();
   const backgroundRemovalDefault = true;
   const bgRemovalMaxDimensionDefault = hostedRuntime ? 768 : 1024;
-  const googleFormBgRemovalModeDefault = hostedRuntime ? "solid" : "ml";
+  const bgRemovalModeDefault = hostedRuntime ? "solid" : "ml";
   const corsOrigins = [
     ...DEFAULT_ALLOWED_ORIGINS,
     readSetting(settings, "CLIENT_URL"),
@@ -284,13 +290,17 @@ const buildAppConfig = (settings = {}) => {
       readEnvOverrideSetting(settings, "BACKGROUND_REMOVAL_ENABLED"),
       backgroundRemovalDefault
     ),
+    uploadBgRemovalMode: parseBgRemovalMode(
+      readEnvOverrideSetting(settings, "UPLOAD_BG_REMOVAL_MODE"),
+      bgRemovalModeDefault
+    ),
     googleFormRemoveBg: parseBoolean(
       readEnvOverrideSetting(settings, "GOOGLE_FORM_REMOVE_BG"),
       backgroundRemovalDefault
     ),
-    googleFormBgRemovalMode: parseGoogleFormBgRemovalMode(
+    googleFormBgRemovalMode: parseBgRemovalMode(
       readEnvOverrideSetting(settings, "GOOGLE_FORM_BG_REMOVAL_MODE"),
-      googleFormBgRemovalModeDefault
+      bgRemovalModeDefault
     ),
     bgRemovalFallbackEnabled: parseBoolean(
       readEnvOverrideSetting(settings, "BG_REMOVAL_FALLBACK_ENABLED"),

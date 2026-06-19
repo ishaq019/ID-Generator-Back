@@ -14,6 +14,53 @@ const getBackgroundRemoval = () => {
   return require("../utils/backgroundRemoval");
 };
 
+const buildOriginalUploadFile = (file, fileName) => {
+  return {
+    ...file,
+    driveFileName: fileName,
+    originalname: fileName,
+    backgroundRemovalMode: "none",
+  };
+};
+
+const processUploadedImage = async (file, appConfig, options = {}) => {
+  const mode = appConfig.uploadBgRemovalMode || "solid";
+
+  if (mode === "none") {
+    return buildOriginalUploadFile(file, options.fileName || file.originalname);
+  }
+
+  try {
+    const {
+      removeBackgroundFromUpload,
+      removeSolidBackgroundFromUpload,
+    } = getBackgroundRemoval();
+    const backgroundOptions = {
+      fileName: options.fileName || file.originalname,
+      model: appConfig.bgRemovalModel,
+      maxDimension: appConfig.bgRemovalMaxDimension,
+      timeoutMs: appConfig.bgRemovalTimeoutMs,
+      fallbackEnabled: appConfig.bgRemovalFallbackEnabled,
+    };
+
+    if (mode === "ml") {
+      return await removeBackgroundFromUpload(file, backgroundOptions);
+    }
+
+    return await removeSolidBackgroundFromUpload(file, backgroundOptions);
+  } catch (error) {
+    console.warn(
+      "Upload background removal failed; uploading original image.",
+      {
+        mode,
+        error: error.message,
+      },
+    );
+
+    return buildOriginalUploadFile(file, options.fileName || file.originalname);
+  }
+};
+
 const handleUploadMiddleware = fieldName => {
   const uploadSingle = createUploadMiddleware(fieldName);
 
@@ -59,24 +106,9 @@ const createUploadHandler = (fieldName) => [
       let fileToUpload = req.file;
 
       if (removeBg) {
-        try {
-          const { removeBackgroundFromUpload } = getBackgroundRemoval();
-
-          fileToUpload = await removeBackgroundFromUpload(req.file, {
-            fileName: req.body?.fileName || req.file.originalname,
-            model: appConfig.bgRemovalModel,
-            maxDimension: appConfig.bgRemovalMaxDimension,
-            timeoutMs: appConfig.bgRemovalTimeoutMs,
-            fallbackEnabled: appConfig.bgRemovalFallbackEnabled,
-          });
-        } catch (bgError) {
-          console.error("BACKGROUND REMOVAL FAILED:", bgError);
-
-          return res.status(500).json({
-            success: false,
-            message: bgError.message || "Background removal failed",
-          });
-        }
+        fileToUpload = await processUploadedImage(req.file, appConfig, {
+          fileName: req.body?.fileName || req.file.originalname,
+        });
       }
 
       const uploadedFile = await uploadBufferToDrive(fileToUpload, {
