@@ -67,6 +67,11 @@
       "value": "true",
       "required": false
     },
+    "GOOGLE_FORM_BG_REMOVAL_MODE": {
+      "description": "Google Form background-removal mode. Use solid on small Heroku dynos; set ml only on larger dynos.",
+      "value": "solid",
+      "required": false
+    },
     "BG_REMOVAL_FALLBACK_ENABLED": {
       "description": "Use a fast solid-background fallback if ML removal is too slow or unavailable.",
       "value": "true",

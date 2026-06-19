@@ -49,8 +49,6 @@ function onFormSubmit(e) {
     const rowData = getSubmittedRowData_(e);
     const photoFileId = getUploadedFileId_(e, rowData, FIELD_TITLES.photo);
 
-    shareUploadedFileWithBackend_(photoFileId);
-
     const payload = {
       name: getAnswer_(e, rowData, FIELD_TITLES.name),
       employeeId: getAnswer_(e, rowData, FIELD_TITLES.employeeId),
@@ -61,8 +59,11 @@ function onFormSubmit(e) {
       submissionId: getSubmissionId_(e, rowData)
     };
 
+    addPhotoBase64Fallback_(payload, photoFileId);
+    shareUploadedFileWithBackendOrFallback_(photoFileId, payload);
+
     Logger.log("Posting to backend URL: " + url);
-    Logger.log("Payload: " + JSON.stringify(payload));
+    Logger.log("Payload: " + JSON.stringify(redactPayloadForLog_(payload)));
 
     const response = UrlFetchApp.fetch(url, {
       method: "post",
@@ -138,6 +139,78 @@ function shareUploadedFileWithBackend_(fileId) {
         error.message
     );
   }
+}
+
+function shareUploadedFileWithBackendOrFallback_(fileId, payload) {
+  try {
+    shareUploadedFileWithBackend_(fileId);
+  } catch (error) {
+    if (!payload.photoBase64) {
+      throw error;
+    }
+
+    Logger.log(
+      "Could not grant backend Drive account access, continuing with " +
+        "photoBase64 fallback: " +
+        error.message
+    );
+  }
+}
+
+function addPhotoBase64Fallback_(payload, fileId) {
+  if (!getBooleanScriptSetting_("SEND_PHOTO_BASE64_FALLBACK", true)) {
+    return;
+  }
+
+  try {
+    const file = DriveApp.getFileById(fileId);
+    const blob = file.getBlob();
+    const bytes = blob.getBytes();
+
+    payload.photoBase64 = Utilities.base64Encode(bytes);
+    payload.photoMimeType = blob.getContentType() || file.getMimeType();
+
+    Logger.log(
+      "Attached uploaded photo base64 fallback: " +
+        bytes.length +
+        " bytes, " +
+        payload.photoMimeType
+    );
+  } catch (error) {
+    Logger.log(
+      "Could not attach uploaded photo base64 fallback for file " +
+        fileId +
+        ": " +
+        error.message
+    );
+  }
+}
+
+function getBooleanScriptSetting_(key, fallback) {
+  const value = getScriptSetting_(key, "");
+
+  if (!value) return fallback;
+
+  return !/^(false|0|no|off)$/i.test(value);
+}
+
+function redactPayloadForLog_(payload) {
+  const redacted = {};
+  const keys = Object.keys(payload || {});
+
+  for (let i = 0; i < keys.length; i += 1) {
+    const key = keys[i];
+
+    if (key === "photoBase64") {
+      redacted[key] = payload[key]
+        ? "[base64 omitted, length " + String(payload[key]).length + "]"
+        : "";
+    } else {
+      redacted[key] = payload[key];
+    }
+  }
+
+  return redacted;
 }
 
 function getReaderEmails_() {

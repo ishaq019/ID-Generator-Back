@@ -5,8 +5,11 @@ const {
   downloadDriveFileAsBuffer,
   sanitizeFileName,
 } = require("../utils/googleDriveStorage");
-const { removeBackgroundFromUpload } = require("../utils/backgroundRemoval");
 const { getRuntimeAppConfig } = require("../utils/appConfig");
+
+const getBackgroundRemoval = () => {
+  return require("../utils/backgroundRemoval");
+};
 
 const FIELD_ALIASES = {
   name: [
@@ -313,7 +316,23 @@ const buildGoogleFormPhotoFileFromDrive = async (payload, appConfig) => {
 const buildGoogleFormPhotoFile = async (payload, appConfig) => {
   // Primary Google Sheet flow: Apps Script sends the Drive file ID only.
   if (payload.photoFileId) {
-    return buildGoogleFormPhotoFileFromDrive(payload, appConfig);
+    try {
+      return await buildGoogleFormPhotoFileFromDrive(payload, appConfig);
+    } catch (error) {
+      if (!payload.photoBase64 || !error.driveStatusCode) {
+        throw error;
+      }
+
+      console.warn(
+        "Google Form photoFileId download failed; using photoBase64 fallback.",
+        {
+          driveStatusCode: error.driveStatusCode,
+          statusCode: error.statusCode,
+        },
+      );
+
+      return buildGoogleFormPhotoFileFromBase64(payload, appConfig);
+    }
   }
 
   // Legacy webhook fallback: older scripts sent the image bytes directly.
@@ -344,6 +363,60 @@ const getMissingFields = (payload) => {
   }
 
   return missingFields;
+};
+
+const buildOriginalPhotoFile = (file, fileName) => {
+  return {
+    ...file,
+    driveFileName: fileName,
+    originalname: fileName,
+  };
+};
+
+const processGoogleFormPhoto = async (
+  originalPhotoFile,
+  stablePhotoName,
+  appConfig,
+) => {
+  const mode = appConfig.googleFormBgRemovalMode || "solid";
+  const shouldRemoveBg =
+    appConfig.backgroundRemovalEnabled !== false &&
+    appConfig.googleFormRemoveBg !== false &&
+    mode !== "none";
+
+  if (!shouldRemoveBg) {
+    return buildOriginalPhotoFile(originalPhotoFile, stablePhotoName);
+  }
+
+  try {
+    const {
+      removeBackgroundFromUpload,
+      removeSolidBackgroundFromUpload,
+    } = getBackgroundRemoval();
+    const options = {
+      fileName: stablePhotoName,
+      model: appConfig.bgRemovalModel,
+      maxDimension: appConfig.bgRemovalMaxDimension,
+      timeoutMs: appConfig.bgRemovalTimeoutMs,
+      fallbackEnabled: appConfig.bgRemovalFallbackEnabled,
+    };
+
+    if (mode === "ml") {
+      return await removeBackgroundFromUpload(originalPhotoFile, options);
+    }
+
+    return await removeSolidBackgroundFromUpload(originalPhotoFile, options);
+  } catch (error) {
+    console.warn(
+      "Google Form background removal failed; uploading original photo.",
+      {
+        mode,
+        error: error.message,
+      },
+    );
+
+    return buildOriginalPhotoFile(originalPhotoFile, stablePhotoName);
+  }
 };
 
 exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
@@ -415,26 +488,14 @@ exports.createDigivalCardFromGoogleForm = async (req, res, next) => {
 
       const safeEmployeeId = getSafeEmployeeId(payload.employeeId);
       const stablePhotoName = `${safeEmployeeId || "employee"}-photo.png`;
-      const shouldRemoveBg =
-        appConfig.backgroundRemovalEnabled !== false &&
-        appConfig.googleFormRemoveBg !== false;
-
-      const photoFile = shouldRemoveBg
-        ? await removeBackgroundFromUpload(originalPhotoFile, {
-            fileName: stablePhotoName,
-            model: appConfig.bgRemovalModel,
-            maxDimension: appConfig.bgRemovalMaxDimension,
-            timeoutMs: appConfig.bgRemovalTimeoutMs,
-            fallbackEnabled: appConfig.bgRemovalFallbackEnabled,
-          })
-        : {
-            ...originalPhotoFile,
-            driveFileName: stablePhotoName,
-            originalname: stablePhotoName,
-          };
+      const photoFile = await processGoogleFormPhoto(
+        originalPhotoFile,
+        stablePhotoName,
+        appConfig,
+      );
 
       uploadedPhoto = await uploadBufferToDrive(photoFile, {
-        fileName: stablePhotoName,
+        fileName: photoFile.driveFileName || stablePhotoName,
         replaceExisting: true,
       });
     } catch (uploadError) {

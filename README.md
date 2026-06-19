@@ -69,6 +69,7 @@ GOOGLE_DRIVE_REFRESH_TOKEN=your OAuth refresh token
 ```txt
 BACKGROUND_REMOVAL_ENABLED=true
 GOOGLE_FORM_REMOVE_BG=true
+GOOGLE_FORM_BG_REMOVAL_MODE=solid
 BG_REMOVAL_FALLBACK_ENABLED=true
 BG_REMOVAL_MODEL=small
 BG_REMOVAL_MAX_DIMENSION=768
@@ -127,13 +128,14 @@ For Heroku, keep background removal enabled but bounded:
 ```txt
 BACKGROUND_REMOVAL_ENABLED=true
 GOOGLE_FORM_REMOVE_BG=true
+GOOGLE_FORM_BG_REMOVAL_MODE=solid
 BG_REMOVAL_FALLBACK_ENABLED=true
 BG_REMOVAL_MODEL=small
 BG_REMOVAL_MAX_DIMENSION=768
 BG_REMOVAL_TIMEOUT_MS=22000
 ```
 
-If `BACKGROUND_REMOVAL_ENABLED` or `GOOGLE_FORM_REMOVE_BG` is set to `false` in Heroku Config Vars or in the MongoDB `settings` document, the backend will upload the original image without removing the background. Heroku Config Vars override MongoDB for these background-removal kill switches.
+For Google Form submissions, `GOOGLE_FORM_BG_REMOVAL_MODE=solid` uses the fast remover that is safer on small Heroku dynos. Set it to `ml` only on a larger dyno after testing. If `BACKGROUND_REMOVAL_ENABLED` or `GOOGLE_FORM_REMOVE_BG` is set to `false`, or `GOOGLE_FORM_BG_REMOVAL_MODE` is set to `none`, the backend will upload the original image without removing the background. Heroku Config Vars override MongoDB for these background-removal kill switches.
 
 ## Environment Fallbacks
 
@@ -168,7 +170,7 @@ npm run check:drive-config
 
 This prints detected Mongo keys, masked credential fingerprints, and whether Google accepts the configured refresh token.
 
-Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `GOOGLE_FORM_REMOVE_BG`, `BG_REMOVAL_FALLBACK_ENABLED`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, `BG_REMOVAL_TIMEOUT_MS`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
+Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_WEBSITE`, `COMPANY_ADDRESS`, `BACKGROUND_REMOVAL_ENABLED`, `GOOGLE_FORM_REMOVE_BG`, `GOOGLE_FORM_BG_REMOVAL_MODE`, `BG_REMOVAL_FALLBACK_ENABLED`, `BG_REMOVAL_MODEL`, `BG_REMOVAL_MAX_DIMENSION`, `BG_REMOVAL_TIMEOUT_MS`, and `GOOGLE_FORM_PHOTO_MAX_SIZE`.
 
 ## MongoDB Config
 
@@ -242,13 +244,15 @@ Required JSON fields:
   "phone": "9876543210",
   "email": "employee@example.com",
   "photoFileId": "google drive file id from the Form upload cell",
+  "photoBase64": "optional base64 fallback image bytes",
+  "photoMimeType": "image/png",
   "submissionId": "unique google sheet row id"
 }
 ```
 
-The Apps Script runs from the linked Google Sheet, reads the submitted row, extracts the uploaded image's Drive file ID, and sends `photoFileId` to the backend. The backend downloads that file, removes the background when enabled, and uploads the processed image to the output folder configured by `GOOGLE_DRIVE_FOLDER_ID`. Legacy `photoBase64` plus `photoMimeType` payloads are still accepted as a fallback.
+The Apps Script runs from the linked Google Sheet, reads the submitted row, extracts the uploaded image's Drive file ID, and sends `photoFileId` to the backend. It also sends `photoBase64` plus `photoMimeType` by default as a fallback. The backend first tries to download the Drive file, then uses the base64 image if the Google Drive download returns an access/not-found error. After reading the photo, the backend removes the background when enabled and uploads the processed image to the output folder configured by `GOOGLE_DRIVE_FOLDER_ID`.
 
-The backend Google Drive credentials must be able to read the Form-uploaded source file and write to the output folder. Use OAuth credentials for an account with both permissions, or set the Apps Script `BACKEND_DRIVE_READER_EMAILS` property to the backend service account/OAuth account email so the script grants read access to each uploaded source file before sending the webhook.
+The backend Google Drive credentials must be able to write to the output folder. They should also be able to read the Form-uploaded source file when you want the primary Drive-file path to work. Use OAuth credentials for an account with both permissions, or set the Apps Script `BACKEND_DRIVE_READER_EMAILS` property to the backend service account/OAuth account email so the script grants read access to each uploaded source file before sending the webhook. Do not set `BACKEND_DRIVE_READER_EMAILS` to the employee/respondent email.
 
 The Apps Script copy is in:
 

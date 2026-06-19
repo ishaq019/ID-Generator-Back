@@ -328,11 +328,14 @@ If you use the Google Form flow, configure Apps Script project properties:
 BACKEND_URL=https://your-heroku-app-name.herokuapp.com/api/google-form/digival-card
 WEBHOOK_SECRET=same-value-as-backend-WEBHOOK_SECRET
 BACKEND_DRIVE_READER_EMAILS=backend-drive-account@example.com
+SEND_PHOTO_BASE64_FALLBACK=true
 ```
 
 `BACKEND_DRIVE_READER_EMAILS` should be the Google account email that generated the refresh token, or the service account email if using service account credentials.
+Do not set it to the employee/respondent email submitted through the Form.
 
 This matters because Google Form uploads are often owned by the Form owner's Drive account. Apps Script can grant the backend account read access before sending the webhook.
+`SEND_PHOTO_BASE64_FALLBACK` defaults to `true`; with the current Apps Script, the backend can use that fallback when the Drive file ID is not visible to the backend credentials.
 
 ## Optional: Service Account Instead of OAuth Refresh Token
 
