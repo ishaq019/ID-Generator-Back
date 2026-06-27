@@ -71,7 +71,7 @@ const templateSchema = new mongoose.Schema(
     slug: { type: String, unique: true, sparse: true },
     layoutKey: {
       type: String,
-      enum: ["generic", "digival"],
+      enum: ["generic", "digival", "leaprobots"],
       default: "generic"
     },
     category: {
