@@ -7,16 +7,13 @@ dotenv.config();
 const connectDB = require("./config/db");
 const seedDefaultTemplates = require("./utils/defaultTemplates");
 const { getAppConfig } = require("./utils/appConfig");
-const { assertAuthSecretConfigured } = require("./utils/authTokenService");
 
-const authRoutes = require("./routes/authRoutes");
 const templateRoutes = require("./routes/templateRoutes");
 const cardRoutes = require("./routes/cardRoutes");
 const uploadRoutes = require("./routes/uploadRoutes");
 const fileRoutes = require("./routes/fileRoutes");
 const googleFormRoutes = require("./routes/googleFormRoutes");
 
-const { protect } = require("./middleware/authMiddleware");
 const { corsMiddleware } = require("./middleware/corsMiddleware");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 
@@ -29,7 +26,6 @@ const prepareServer = async () => {
   if (!serverReadyPromise) {
     serverReadyPromise = (async () => {
       await connectDB();
-      await assertAuthSecretConfigured();
       await seedDefaultTemplates();
     })().catch(error => {
       serverReadyPromise = null;
@@ -99,21 +95,16 @@ app.use((req, res, next) => {
 
 /*
   Public:
-  - auth/login must be public.
   - files must be public because <img src=""> cannot send Authorization header.
-  - google-form route stays public from login, but protected using x-webhook-secret.
+  - google-form route is protected using x-webhook-secret.
 */
-app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/google-form", googleFormRoutes);
 
-/*
-  Protected admin routes.
-*/
-app.use("/api/uploads", protect, uploadRoutes);
-app.use("/api/upload", protect, uploadRoutes);
-app.use("/api/templates", protect, templateRoutes);
-app.use("/api/cards", protect, cardRoutes);
+app.use("/api/uploads", uploadRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api/templates", templateRoutes);
+app.use("/api/cards", cardRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

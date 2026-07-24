@@ -9,9 +9,6 @@ const DEFAULT_ALLOWED_ORIGINS = [
   "http://localhost:5175"
 ];
 const SETTING_ALIASES = {
-  AUTH_SECRET: ["authSecret", "auth_secret"],
-  ADMIN_USERNAME: ["adminUsername", "admin_username"],
-  ADMIN_PASSWORD: ["adminPassword", "admin_password"],
   CLIENT_URL: ["clientUrl", "client_url"],
   CLIENT_URLS: ["clientUrls", "client_urls"],
   FRONTEND_URL: ["frontendUrl", "frontend_url"],
@@ -253,9 +250,6 @@ const buildAppConfig = (settings = {}) => {
       10 * 1024 * 1024
     ),
     googleFormWebhookSecret: readSetting(settings, "WEBHOOK_SECRET"),
-    authSecret: readSetting(settings, "AUTH_SECRET"),
-    adminUsername: readSetting(settings, "ADMIN_USERNAME"),
-    adminPassword: readSetting(settings, "ADMIN_PASSWORD"),
     webhookUrl:
       readSetting(settings, "WEBHOOK_URL") ||
       readSetting(settings, "WEEBHOOK_URL"),

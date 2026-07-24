@@ -18,18 +18,6 @@
       "description": "MongoDB Atlas connection string for the ID Generator database.",
       "required": true
     },
-    "AUTH_SECRET": {
-      "description": "Long random secret used to sign admin auth tokens.",
-      "generator": "secret"
-    },
-    "ADMIN_USERNAME": {
-      "description": "Admin login username.",
-      "value": "admin"
-    },
-    "ADMIN_PASSWORD": {
-      "description": "Strong admin login password.",
-      "required": true
-    },
     "WEBHOOK_SECRET": {
       "description": "Shared secret sent by the Google Apps Script webhook.",
       "generator": "secret"

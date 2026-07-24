@@ -47,9 +47,6 @@ Manual Heroku Dashboard deploy:
 
 ```txt
 MONGO_URI=your MongoDB Atlas connection string
-AUTH_SECRET=a long random secret
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=a strong admin password
 WEBHOOK_SECRET=a long random secret for Apps Script
 NODE_ENV=production
 ```
@@ -120,7 +117,7 @@ https://your-heroku-app-name.herokuapp.com/health
 https://your-heroku-app-name.herokuapp.com/ready
 ```
 
-`/health` only confirms the Express server is running. `/ready` checks MongoDB, `AUTH_SECRET`, and default template seeding. If `/ready` returns `503`, open Heroku `More` -> `View logs` and check these config vars first: `MONGO_URI`, `AUTH_SECRET`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, and `WEBHOOK_SECRET`.
+`/health` only confirms the Express server is running. `/ready` checks MongoDB and default template seeding. If `/ready` returns `503`, open Heroku `More` -> `View logs` and check these config vars first: `MONGO_URI` and `WEBHOOK_SECRET`.
 
 ### Heroku Background Removal
 
@@ -143,9 +140,6 @@ For admin uploads, `UPLOAD_BG_REMOVAL_MODE=solid` uses the fast remover that is 
 
 ```txt
 MONGO_URI=your MongoDB connection string
-AUTH_SECRET=a long random secret used to sign admin auth tokens
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=a strong admin password
 WEBHOOK_SECRET=a long random secret shared with Apps Script
 CLIENT_URL=http://localhost:5175
 CLIENT_URLS=http://localhost:5173,http://localhost:5175
@@ -176,26 +170,11 @@ Optional app behavior can be configured with `DIGIVAL_TEMPLATE_SLUG`, `COMPANY_W
 
 ## MongoDB Config
 
-Easy admin setup: set `ADMIN_USERNAME` and `ADMIN_PASSWORD` in `.env` or in the MongoDB `settings` document.
-
-Optional fallback: create one admin document in the `static_auth` collection. The app does not expose an admin setup page or setup endpoint.
-
-```json
-{
-  "key": "admin-signin",
-  "username": "admin",
-  "password": "Admin@123"
-}
-```
-
 Create one app settings document in the `settings` collection. Each field is read as `MongoDB value || env value`.
 
 ```json
 {
   "key": "app-settings",
-  "AUTH_SECRET": "a long random secret used to sign admin auth tokens",
-  "ADMIN_USERNAME": "admin",
-  "ADMIN_PASSWORD": "a strong admin password",
   "CLIENT_URL": "http://localhost:5175",
   "WEBHOOK_SECRET": "a long random secret shared with Apps Script",
   "GOOGLE_DRIVE_FOLDER_ID": "your Drive folder ID",
@@ -207,8 +186,6 @@ Create one app settings document in the `settings` collection. Each field is rea
 ```
 
 The backend also supports optional `CLIENT_URLS`, `WEBHOOK_URL`, `UPLOAD_FILE_SIZE_LIMIT`, `GOOGLE_FORM_PHOTO_MAX_SIZE`, and background-removal fields in the same `app-settings` document.
-
-After setting admin credentials, use `POST /api/auth/login`.
 
 ## Image Upload Endpoint
 

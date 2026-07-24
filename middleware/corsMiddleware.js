@@ -1,6 +1,6 @@
 const ALLOWED_METHODS = "GET,POST,PUT,PATCH,DELETE,OPTIONS,HEAD";
 const DEFAULT_ALLOWED_HEADERS =
-  "Content-Type,Authorization,x-webhook-secret,x-requested-with,Accept,Origin";
+  "Content-Type,x-webhook-secret,x-requested-with,Accept,Origin";
 const EXPOSED_HEADERS = "Content-Length,Content-Type,Content-Disposition";
 const PREFLIGHT_MAX_AGE = "86400";
 const DEFAULT_ALLOWED_ORIGINS = [
